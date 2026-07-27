@@ -132,13 +132,75 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| *(populated by roadmap)* | — | Pending |
+| ACH-01 | Phase 1 | Pending |
+| ACH-02 | Phase 1 | Pending |
+| ACH-03 | Phase 3 | Pending |
+| ACH-04 | Phase 3 | Pending |
+| ACH-05 | Phase 3 | Pending |
+| ACH-06 | Phase 3 | Pending |
+| ACH-07 | Phase 3 | Pending |
+| ACH-08 | Phase 3 | Pending |
+| ACH-09 | Phase 3 | Pending |
+| TIER-01 | Phase 1 | Pending |
+| TIER-02 | Phase 2 | Pending |
+| TIER-03 | Phase 2 | Pending |
+| TIER-04 | Phase 2 | Pending |
+| TIER-05 | Phase 2 | Pending |
+| TIER-06 | Phase 2 | Pending |
+| TIER-07 | Phase 2 | Pending |
+| TRACK-01 | Phase 1 | Pending |
+| TRACK-02 | Phase 1 | Pending |
+| TRACK-03 | Phase 1 | Pending |
+| TRACK-04 | Phase 1 | Pending |
+| TRACK-05 | Phase 1 | Pending |
+| TRACK-06 | Phase 1 | Pending |
+| TRACK-07 | Phase 1 | Pending |
+| TRACK-08 | Phase 1 | Pending |
+| TRACK-09 | Phase 2 | Pending |
+| TRACK-10 | Phase 1 | Pending |
+| PERIOD-01 | Phase 1 | Pending |
+| PERIOD-02 | Phase 2 | Pending |
+| PERIOD-03 | Phase 2 | Pending |
+| PERIOD-04 | Phase 1 | Pending |
+| PERIOD-05 | Phase 1 | Pending |
+| PERIOD-06 | Phase 1 | Pending |
+| TODO-01 | Phase 4 | Pending |
+| TODO-02 | Phase 4 | Pending |
+| TODO-03 | Phase 4 | Pending |
+| TODO-04 | Phase 4 | Pending |
+| TODO-05 | Phase 4 | Pending |
+| TODO-06 | Phase 4 | Pending |
+| NAV-01 | Phase 2 | Pending |
+| NAV-02 | Phase 4 | Pending |
+| NAV-03 | Phase 4 | Pending |
+| NAV-04 | Phase 1 | Pending |
+| CELEB-01 | Phase 2 | Pending |
+| CELEB-02 | Phase 2 | Pending |
+| CELEB-03 | Phase 5 | Pending |
+| CELEB-04 | Phase 1 | Pending |
+| CELEB-05 | Phase 5 | Pending |
+| CELEB-06 | Phase 5 | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 1 | Pending |
+| DATA-04 | Phase 1 | Pending |
+| DATA-05 | Phase 1 | Pending |
 
 **Coverage:**
-- v1 requirements: 51 total
-- Mapped to phases: 0
-- Unmapped: 51 ⚠️
+- v1 requirements: 53 total *(corrected from 51 — original count undercounted the ACH/TIER/TRACK/PERIOD/TODO/NAV/CELEB/DATA sections above; verified by counting distinct REQ-IDs)*
+- Mapped to phases: 53
+- Unmapped: 0 ✓
+
+**By phase:**
+
+| Phase | Requirement count |
+|-------|--------------------|
+| Phase 1 — Daily Achievements — Core Loop & Foundation | 23 |
+| Phase 2 — Full Achievement Model — Periods & Tiers | 12 |
+| Phase 3 — Achievement Management — Edit, Archive & Reorder | 7 |
+| Phase 4 — Todos & Unified Archive | 8 |
+| Phase 5 — Full-Tab Celebration & Motion Polish | 3 |
 
 ---
 *Requirements defined: 2026-07-27*
-*Last updated: 2026-07-27 after initial definition*
+*Last updated: 2026-07-27 after roadmap creation*
