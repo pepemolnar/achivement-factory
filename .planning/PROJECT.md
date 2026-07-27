@@ -22,19 +22,22 @@ A personal Android app for tracking recurring achievements and one-off todos acr
 
 **Achievements — lifecycle**
 
-- [ ] Create an achievement with a name and a period (daily / weekly / monthly)
-- [ ] Edit an existing achievement
+- [ ] Create an achievement with a name, an icon, an accent colour, and a period (daily / weekly / monthly)
+- [ ] Edit an achievement's name, icon, and colour freely; raise its thresholds without losing the streak
+- [ ] Lowering a threshold or changing the period is not permitted after creation
+- [ ] Reorder achievements within a tab by dragging, with the order persisted
 - [ ] Archive an achievement (hidden from tabs, history intact, restorable)
 - [ ] Permanently delete an archived achievement
 
 **Achievements — counters and tiers**
 
-- [ ] Every achievement has a counter target, defaulting to 1
-- [ ] An achievement is **done** for a period when its count reaches its target
+- [ ] Every achievement has a counter with a done threshold, defaulting to 1
+- [ ] An achievement is **done** for a period when its count reaches that threshold
 - [ ] Partial progress is visible on the card (e.g. 1/2) without counting as done
 - [ ] Optionally attach Bronze/Silver/Gold tiers with user-set thresholds per achievement
 - [ ] Tier names are fixed (Bronze, Silver, Gold); only the thresholds are configurable
 - [ ] Tier sets must fill downward from Gold — valid: `{Gold}`, `{Silver, Gold}`, `{Bronze, Silver, Gold}`. A lone Bronze, a lone Silver, or any set without Gold is rejected
+- [ ] When tiers are configured, the lowest tier's threshold **is** the done threshold — there is only ever one number to hit, and higher tiers are upgrades
 - [ ] Record the highest tier reached in each period
 
 **Completion and streaks**
@@ -96,15 +99,23 @@ A personal Android app for tracking recurring achievements and one-off todos acr
 
 **Domain model, as settled during questioning:**
 
-- An *achievement* recurs on a period (daily, weekly, monthly) and carries a counter with a target. It is done when the count reaches the target.
-- Tiers are a grading ladder layered on top of the same counter. They do not gate done-ness; the target does. An achievement can be graded Gold-only, Silver+Gold, or the full Bronze+Silver+Gold ladder.
+- An *achievement* recurs on a period (daily, weekly, monthly) and carries a counter with a done threshold. It is done when the count reaches that threshold.
+- Tiers are a grading ladder over the same counter. When present, the lowest tier's threshold is the done threshold, so there is never a second number competing with it; higher tiers are upgrades, not gates. An achievement can be graded Gold-only (all-or-nothing at a high bar), Silver+Gold, or the full Bronze+Silver+Gold ladder.
 - A *todo* is a one-off task filed into a period bucket. It shares the tab with achievements but has no counter, tier, or streak.
 - The archive is a single destination for both archived achievements and expired todos, with restore and permanent-delete available from there.
 
-**Open questions for planning:**
+**Resolved during requirements definition:**
 
-- Should the app enforce a relationship between the counter target and the lowest configured tier threshold (e.g. require target ≥ lowest tier, or allow them to be fully independent)? Left independent by default; worth validating during the data-model phase.
-- Exact behaviour when an achievement's period or target is edited mid-streak — whether the existing streak is preserved, recomputed, or reset.
+- *Target vs lowest tier* — unified. When tiers exist, the lowest tier threshold is the done threshold. No separate target.
+- *Mid-streak edits* — made moot by restricting what is editable. Cosmetic fields change freely; thresholds can only be raised; period is immutable. A streak can therefore never be made easier retroactively, and never needs recomputing.
+
+**Research-derived constraints adopted:**
+
+- Period boundaries use civil date types (`LocalDate` / `YearMonth`), never epoch-millis arithmetic — this eliminates DST, timezone-travel, and clock-change bugs by construction.
+- A week is identified by its Monday's date, not by ISO week-of-year, which breaks at year boundaries (2026 is itself a 53-week ISO year). Monday is hardcoded, never taken from device locale.
+- Missed periods are reconciled lazily on app open and resume rather than by a background worker.
+- Celebrations are one-shot events on a non-replaying channel, never derived from persisted state.
+- Room schema export and migration tests must exist before the app is installed on the owner's real device — there is no cloud backup of streak history.
 
 ## Constraints
 
@@ -119,8 +130,10 @@ A personal Android app for tracking recurring achievements and one-off todos acr
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Native Kotlin + Compose + Room | Android-only and local-only make cross-platform runtimes pure overhead; Compose gives the best animation APIs for the celebration-driven core value | — Pending |
-| Done = counter reaches target (default 1) | Preserves the original "gym twice a week" framing; partial progress is visible but does not complete or protect the streak | — Pending |
-| Tiers grade, they do not gate | Keeps done-ness on one clear rule while letting tiers reward going further | — Pending |
+| Done = counter reaches its threshold (default 1) | Preserves the original "gym twice a week" framing; partial progress is visible but does not complete or protect the streak | — Pending |
+| Lowest tier IS the done threshold | Collapses two competing numbers into one; tiers become the goal ladder outright and no configuration can read oddly | — Pending |
+| Only cosmetic edits and threshold raises allowed | Makes the mid-streak-edit question disappear entirely — a streak can never be made easier retroactively, so it never needs recomputing | — Pending |
+| Icon, colour, and drag-to-reorder in v1 | Research found both near-universal even in minimal trackers, and both touch the schema, so they are cheaper now than retrofitted | — Pending |
 | Tier sets fill downward from Gold | A lone Bronze is meaningless; a single-tier achievement should be all-or-nothing at a high bar | — Pending |
 | Streak = consecutive completed periods, no grace | A forgiving streak is not a streak; a miss resets to zero | — Pending |
 | Current-period completion only, undo allowed | Undo fixes mistakes without letting history be rewritten | — Pending |
