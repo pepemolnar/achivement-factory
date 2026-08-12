@@ -25,6 +25,7 @@ created: 2026-08-12
 | Icon library | Two separate icon sources, used for different roles — do not conflate them: (1) **system emoji keyboard** for per-achievement icons (ACH-02), stored as a plain `String`, rendered directly as text glyphs, no curated set to maintain (D-15); (2) `androidx.compose.material.icons.extended` (Material Symbols) for UI chrome only — FAB plus, back arrow, advanced-toggle chevron. The ring→checkmark morph (D-11) is **not** an icon swap — it is a custom `Path`/`Canvas`-driven shape animation (see Motion section), because it must animate continuously out of the closing progress ring. |
 | Font | System default — Android's Material3 baseline `Typography` (Roboto Flex). No bundled custom font family; keeps the app installable with zero font-licensing/packaging concerns for a single-device build. |
 | Theme | Both light and dark supported via Material3 baseline `lightColorScheme()` / `darkColorScheme()`, following the system setting. No manual in-app theme toggle in this phase (not a requirement). |
+| Primary visual anchor | The completion celebration sequence (ring-close → checkmark morph → flame animation, see Motion section) on the achievement card, at the moment of the final tap. The resting list is deliberately low-contrast and calm (neutral card body, accents confined to the icon/ring/flame per D-10) specifically so the celebration reads as the payoff — per CONTEXT.md's "calm list with concentrated moments of delight." Nothing else on the Daily tab competes with it for attention. |
 
 ---
 
@@ -87,7 +88,7 @@ Material3 baseline scheme values (light / dark), used for **app chrome** — the
 |------|-------|-------|
 | Dominant (60%) | Light `#FFFBFE` / Dark `#1C1B1F` (Material3 `background`/`surface`) | Screen background, list background |
 | Secondary (30%) | Light `#F7F2FA` / Dark `#2B2930` (Material3 `surfaceContainer` tone) | Achievement card surface, creation-form field surface, detail-screen surface, snackbar container |
-| Accent (10%) | Light `#6750A4` / Dark `#D0BCFF` (Material3 baseline `primary`) | Reserved for: FAB, the "Save" button, the advanced-toggle's active state, the snackbar "Undo" action text, the Name field's focus indicator |
+| Accent (10%) | Light `#6750A4` / Dark `#D0BCFF` (Material3 baseline `primary`) | Reserved for: FAB, the "Save achievement" button, the advanced-toggle's active state, the snackbar "Undo" action text, the Name field's focus indicator |
 | Destructive | Light `#B3261E` / Dark `#F2B8B5` (Material3 baseline `error`) | Reserved for: the "Name is required" validation message only — no delete/archive actions exist in this phase (ACH-06–08 are Phase 3) |
 
 Accent reserved for: the five app-chrome elements listed above — never the card background, never body text, never used to signal per-achievement identity (that is the job of the palette below).
@@ -141,7 +142,7 @@ Read the system setting via `Settings.Global.getFloat(contentResolver, Settings.
 
 | Element | Copy |
 |---------|------|
-| Primary CTA | FAB: icon-only `+` (Material Symbols "Add"), `contentDescription` = "Add achievement". Creation-screen save button label: **"Save"**. |
+| Primary CTA | FAB: icon-only `+` (Material Symbols "Add"), `contentDescription` = "Add achievement". Creation-screen save button label: **"Save achievement"** — a specific verb + noun, kept consistent with the FAB's contentDescription "Add achievement" and the screen title "New achievement". |
 | Empty state heading | "No achievements yet" |
 | Empty state body | "Tap + to add your first one." |
 | Error state | Form validation (Name field blank on Save attempt): **"Name is required."** Data-load failure (Room read error surfaced to the Daily tab): **"Couldn't load your achievements. Restart the app to try again."** |
