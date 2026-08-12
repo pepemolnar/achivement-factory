@@ -31,7 +31,17 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Current streak and best streak are tracked correctly per achievement, resetting to zero on any missed day (including multi-day gaps found after a long absence), refreshing automatically if the app is left open across midnight, and staying correct across daylight-saving transitions, timezone changes, and manual clock edits.
   4. Completing a daily achievement fires a celebration exactly once, never replaying on device rotation, recomposition, or app restart.
   5. All achievement data survives process death and device restart, the app works fully offline with no INTERNET permission declared, and Room schema export plus migration-safety discipline (no destructive fallback) are in place before this build is installed on the real device.
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Toolchain, Gradle scaffold, civil-date period engine, Room schema v1 with export
+- [ ] 01-02-PLAN.md — Daily tab: repository Flow to StateFlow, resting card, Done section, empty state
+- [ ] 01-03-PLAN.md — Create a daily achievement from a full-screen form behind the FAB
+- [ ] 01-04-PLAN.md — Tick off: whole-card tap, filling ring, done state, atomic undo
+- [ ] 01-05-PLAN.md — Streaks derived from the completion log, reconciled after absence, flame badge
+- [ ] 01-06-PLAN.md — Read-only detail screen via long-press, and live period rollover
+- [ ] 01-07-PLAN.md — The completion celebration: one-shot events, sequenced animation, reduced motion
+- [ ] 01-08-PLAN.md — Ship: signed release APK, migration harness, recorded conventions
 **UI hint**: yes
 
 ### Phase 2: Full Achievement Model — Periods & Tiers
@@ -94,7 +104,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 0/TBD | Not started | - |
+| 1. Daily Achievements — Core Loop & Foundation | 0/8 | Planned | - |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |
