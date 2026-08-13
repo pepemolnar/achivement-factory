@@ -63,7 +63,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 01-07-PLAN.md — The completion celebration: one-shot events, sequenced animation, reduced motion
+- [x] 01-07-PLAN.md — The completion celebration: one-shot events, sequenced animation, reduced motion
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 6/8 | In Progress|  |
+| 1. Daily Achievements — Core Loop & Foundation | 7/8 | In Progress|  |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |

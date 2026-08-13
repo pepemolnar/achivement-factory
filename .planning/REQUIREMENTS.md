@@ -72,7 +72,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CELEB-01**: Completing an achievement fires an animation whose intensity scales with the tier reached
 - [ ] **CELEB-02**: Crossing into a higher tier within the same period fires the corresponding upgraded animation
 - [ ] **CELEB-03**: Clearing an entire tab — every achievement done and every todo ticked — fires a distinct, larger full-tab celebration
-- [ ] **CELEB-04**: Each celebration fires exactly once per triggering event and never replays on rotation, recomposition, process death, or app restart
+- [x] **CELEB-04**: Each celebration fires exactly once per triggering event and never replays on rotation, recomposition, process death, or app restart
 - [ ] **CELEB-05**: Completion is accompanied by haptic feedback that matches the tier reached
 - [ ] **CELEB-06**: Animations respect the system reduced-motion setting
 
@@ -177,7 +177,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CELEB-01 | Phase 2 | Pending |
 | CELEB-02 | Phase 2 | Pending |
 | CELEB-03 | Phase 5 | Pending |
-| CELEB-04 | Phase 1 | Pending |
+| CELEB-04 | Phase 1 | Complete |
 | CELEB-05 | Phase 5 | Pending |
 | CELEB-06 | Phase 5 | Pending |
 | DATA-01 | Phase 1 | Complete |
