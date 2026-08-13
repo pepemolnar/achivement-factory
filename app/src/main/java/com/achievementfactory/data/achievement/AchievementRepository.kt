@@ -60,7 +60,7 @@ class AchievementRepository(
                         id = achievement.id,
                         name = achievement.name,
                         icon = achievement.icon,
-                        accent = AccentSwatch.valueOf(achievement.accentSwatch),
+                        accent = swatchOf(achievement.accentSwatch),
                         target = achievement.counterTarget,
                         count = progress?.count ?: 0,
                         isDone = progress?.done ?: false,
@@ -90,7 +90,7 @@ class AchievementRepository(
                     id = achievement.id,
                     name = achievement.name,
                     icon = achievement.icon,
-                    accent = AccentSwatch.valueOf(achievement.accentSwatch),
+                    accent = swatchOf(achievement.accentSwatch),
                     target = achievement.counterTarget,
                     todayCount = progress?.count ?: 0,
                     isDone = progress?.done ?: false,
@@ -225,6 +225,21 @@ class AchievementRepository(
      * assignment equal to the current value, so on an unchanged day this is free and produces no
      * downstream re-emission.
      */
+    /**
+     * Maps a stored swatch name to an [AccentSwatch], falling back to [AccentSwatch.INDIGO] — the
+     * creation screen's own default — rather than throwing.
+     *
+     * `AccentSwatch.valueOf` throws `IllegalArgumentException` for any string outside the enum,
+     * and `accentSwatch` is a plain `TEXT` column with no `CHECK` constraint, so a hand-edited
+     * row, a future migration, or a renamed/removed swatch can all produce one. Thrown from
+     * inside [observeDaily], that exception reaches `DailyViewModel.uiState`'s `.catch`, which
+     * *terminates* the upstream flow — leaving the Daily tab permanently stuck on
+     * "Restart the app to try again" for as long as the row exists, with restarting no help. A
+     * cosmetic column is not worth an unrecoverable screen; the wrong colour is.
+     */
+    private fun swatchOf(name: String): AccentSwatch =
+        AccentSwatch.entries.firstOrNull { it.name == name } ?: AccentSwatch.INDIGO
+
     private fun resolveTodayKeyForWrite(): PeriodKey {
         currentPeriodProvider.refresh()
         return currentPeriodProvider.currentDailyKey.value

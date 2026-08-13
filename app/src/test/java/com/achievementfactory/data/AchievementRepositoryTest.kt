@@ -143,6 +143,36 @@ class AchievementRepositoryTest {
         }
     }
 
+    /**
+     * `accentSwatch` is a plain TEXT column with no CHECK constraint, so an unrecognized value is
+     * reachable via a hand-edited row, a future migration, or a renamed swatch. Throwing here is
+     * unrecoverable rather than merely wrong: the exception surfaces in `DailyViewModel.uiState`'s
+     * `.catch`, and `catch` *terminates* the upstream flow — the Daily tab then shows
+     * "Restart the app to try again" for as long as the row exists, and restarting does not help.
+     */
+    @Test
+    fun observeDaily_withAnUnrecognizedAccentSwatch_fallsBackInsteadOfKillingTheFlow() = runBlocking {
+        val id = database.achievementDao().insert(sampleAchievement("Read"))
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE achievements SET accentSwatch = 'BLUE' WHERE id = $id"
+        )
+
+        val result = repository.observeDaily().first()
+
+        assertEquals(1, result.size)
+        assertEquals(AccentSwatch.INDIGO, result.single().accent)
+    }
+
+    @Test
+    fun observeDetail_withAnUnrecognizedAccentSwatch_fallsBackInsteadOfKillingTheFlow() = runBlocking {
+        val id = database.achievementDao().insert(sampleAchievement("Read"))
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE achievements SET accentSwatch = 'BLUE' WHERE id = $id"
+        )
+
+        assertEquals(AccentSwatch.INDIGO, repository.observeDetail(id).first()?.accent)
+    }
+
     @Test
     fun create_writesAnAchievementWithZeroedStreaksAndNoTierThresholds() = runBlocking {
         val id = repository.create("Read", "📖", AccentSwatch.EMERALD, target = 3)
