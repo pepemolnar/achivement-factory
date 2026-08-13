@@ -65,7 +65,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **NAV-01**: App presents three tabs — Daily, Weekly, Monthly
 - [ ] **NAV-02**: Each tab shows that period's achievements and todos together in one list
 - [ ] **NAV-03**: User can reach an archive view listing archived achievements and expired todos, with restore and permanent-delete actions
-- [ ] **NAV-04**: Empty tabs show a helpful empty state that explains how to add the first item
+- [x] **NAV-04**: Empty tabs show a helpful empty state that explains how to add the first item
 
 ### Celebration
 
@@ -173,7 +173,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 4 | Pending |
 | NAV-03 | Phase 4 | Pending |
-| NAV-04 | Phase 1 | Pending |
+| NAV-04 | Phase 1 | Complete |
 | CELEB-01 | Phase 2 | Pending |
 | CELEB-02 | Phase 2 | Pending |
 | CELEB-03 | Phase 5 | Pending |
