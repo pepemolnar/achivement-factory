@@ -155,13 +155,42 @@ ViewModel's companion object exposes a `Factory: ViewModelProvider.Factory` buil
 it via `createSavedStateHandle()` inside that same initializer block.
 
 **State versus events.** One-shot signals — undo snackbars, completion celebrations — travel on
-a dedicated `Channel(Channel.BUFFERED)` exposed as `.receiveAsFlow()`, collected by the screen
-under `repeatOnLifecycle(STARTED)`. A `Channel` holds no buffered history, so a collector that
-subscribes after rotation or process restoration receives nothing — never the last-delivered
-event. These events are never folded into a `UiState` and never derived from one; they are
-emitted only at the exact transition edge that produced them (e.g. `IncrementOutcome
-.justCompleted`). This is what makes CELEB-04 (a celebration plays exactly once) hold, and the
-rule every later phase's new one-shot signal must follow.
+a dedicated `MutableSharedFlow` exposed via `.asSharedFlow()`, collected by the screen under
+`repeatOnLifecycle(STARTED)`, and constructed exactly like this:
+
+```kotlin
+private val _celebrations = MutableSharedFlow<CelebrationEvent>(
+    replay = 0,
+    extraBufferCapacity = EVENT_BUFFER_CAPACITY,   // 8
+    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+)
+```
+
+**Do NOT use `Channel(Channel.BUFFERED)` for these.** Phase 1 shipped that first and it was
+wrong: a `Channel` retains up to 64 *undelivered* elements and hands every one of them to the
+next collector. Because the write lands asynchronously in `viewModelScope` — which outlives an
+`Activity` recreation — an event produced while the screen was stopped got buffered and then
+replayed after rotation, re-running the celebration on an already-completed card and re-raising
+the undo snackbar for a pre-rotation tap. `replay = 0` on a `SharedFlow` drops an emission
+outright when nobody is subscribed, which is the required behaviour: an event nobody was there
+to see never happened. The small `extraBufferCapacity` covers only a *present but momentarily
+slow* collector (the undo collector suspends for the whole snackbar duration) so a burst of taps
+is not lost — it is never storage for a collector that has not attached yet. Note that
+`extraBufferCapacity = 0` is not an option: a non-`SUSPEND` overflow policy requires
+`replay + extraBufferCapacity > 0`, and a genuinely zero-capacity `SharedFlow` makes `tryEmit`
+return `false` whenever a subscriber *is* present.
+
+These events are never folded into a `UiState` and never derived from one; they are emitted only
+at the exact transition edge that produced them (e.g. `IncrementOutcome.justCompleted`). This is
+what makes CELEB-04 (a celebration plays exactly once) hold, and the rule every later phase's new
+one-shot signal must follow.
+
+**Test these against the replay window, not around it.** The Phase 1 tests asserted this
+invariant while being structurally incapable of failing — they called `expectNoEvents()` without
+letting the scheduler dispatch the delivering coroutine, and the instrumented test waited for the
+animation to settle before `recreate()`. A test for a one-shot event must drain the scheduler
+while subscribed, and must exercise the stopped-collector window. Verify a new one can fail by
+temporarily setting `replay = 1` and confirming it goes red.
 
 **Dependency injection.** A single hand-written `AppContainer`, constructed once in
 `AchievementFactoryApp.onCreate()`, exposing lazily-built repositories and use cases backed by
