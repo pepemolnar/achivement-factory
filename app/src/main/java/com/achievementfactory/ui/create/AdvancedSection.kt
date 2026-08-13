@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 @Composable
 fun AdvancedSection(
     expanded: Boolean = false,
-    target: Int,
+    targetInput: String,
     onToggle: () -> Unit,
     onTargetChange: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -47,7 +47,7 @@ fun AdvancedSection(
         }
         AnimatedVisibility(visible = expanded) {
             Column {
-                CounterTargetField(target = target, onTargetChange = onTargetChange)
+                CounterTargetField(targetInput = targetInput, onTargetChange = onTargetChange)
                 // Insertion point for the future graded-threshold-ladder fields (D-19) — nothing
                 // added here yet.
             }
@@ -55,18 +55,29 @@ fun AdvancedSection(
     }
 }
 
-/** The counter target field (D-19), hidden by default behind [AdvancedSection]. */
+/**
+ * The counter target field (D-19), hidden by default behind [AdvancedSection].
+ *
+ * [targetInput] is raw text, not a formatted `Int`: the field must render exactly what was typed,
+ * including a momentarily empty box while the user replaces the number. Coercion happens once, at
+ * read time, in [CreateAchievementUiState.target].
+ */
 @Composable
 fun CounterTargetField(
-    target: Int,
+    targetInput: String,
     onTargetChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
-        value = target.toString(),
+        value = targetInput,
         onValueChange = onTargetChange,
         label = { Text("Counter target") },
-        supportingText = { Text("The achievement is done when the count reaches this number.") },
+        supportingText = {
+            Text(
+                "The achievement is done when the count reaches this number " +
+                    "(${CreateAchievementUiState.MIN_TARGET}–${CreateAchievementUiState.MAX_TARGET}).",
+            )
+        },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = modifier.fillMaxWidth(),

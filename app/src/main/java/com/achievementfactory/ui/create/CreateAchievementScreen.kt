@@ -111,7 +111,7 @@ fun CreateAchievementScreen(
             Column(modifier = Modifier.padding(top = Spacing.lg)) {
                 AdvancedSection(
                     expanded = uiState.advancedExpanded,
-                    target = uiState.target,
+                    targetInput = uiState.targetInput,
                     onToggle = onToggleAdvanced,
                     onTargetChange = onTargetChange,
                 )

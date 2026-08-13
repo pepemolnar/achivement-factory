@@ -17,9 +17,33 @@ data class CreateAchievementUiState(
     val name: String = "",
     val icon: String? = null,
     val accent: AccentSwatch = AccentSwatch.INDIGO,
-    val target: Int = 1,
+    val targetInput: String = "1",
     val advancedExpanded: Boolean = false,
     val nameError: String? = null,
     val saveError: String? = null,
     val saved: Boolean = false,
-)
+) {
+    /**
+     * The counter target the save actually uses, coerced from [targetInput] only at the point of
+     * reading rather than on every keystroke.
+     *
+     * The field holds raw text on purpose. When the `Int` was the state, a fully controlled
+     * `value = target.toString()` field rewrote anything unparseable to `1` as it was typed:
+     * clearing the box to type a new number snapped it back to `"1"`, so typing `5` produced
+     * `15`, and pasting anything longer than `Int.MAX_VALUE` was silently replaced by `1` — the
+     * opposite of what was asked for, with no error shown. Keeping the text and coercing here
+     * means what the user sees is exactly what they typed.
+     */
+    val target: Int get() = targetInput.toIntOrNull()?.coerceIn(MIN_TARGET, MAX_TARGET) ?: MIN_TARGET
+
+    companion object {
+        const val MIN_TARGET = 1
+
+        /**
+         * Also the field's max input length in digits. Without a ceiling a target of
+         * `2_000_000_000` is accepted and produces an achievement that can never be completed.
+         */
+        const val MAX_TARGET = 999
+        const val MAX_TARGET_DIGITS = 3
+    }
+}

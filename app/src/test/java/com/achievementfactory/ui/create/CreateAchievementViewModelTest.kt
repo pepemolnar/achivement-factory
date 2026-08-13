@@ -168,6 +168,51 @@ class CreateAchievementViewModelTest {
     }
 
     /**
+     * The field is fully controlled, so whatever the state says is what the user sees. Clearing
+     * the box to retype must therefore leave it *empty*, not snap it back to `"1"` — when it
+     * snapped back, typing `5` next produced `15`.
+     */
+    @Test
+    fun onTargetChange_clearingTheFieldToRetype_doesNotRewriteItBackToOne() {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onTargetChange("3")
+
+        viewModel.onTargetChange("")
+        assertEquals("", viewModel.uiState.value.targetInput)
+
+        viewModel.onTargetChange("5")
+        assertEquals("5", viewModel.uiState.value.targetInput)
+        assertEquals(5, viewModel.uiState.value.target)
+    }
+
+    @Test
+    fun onTargetChange_rejectsInputThatCouldNeverBeAValidTarget_keepingWhatWasThere() {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onTargetChange("7")
+
+        // Non-digits and over-long pastes are refused outright rather than silently substituted
+        // with 1, which is the opposite of what the user asked for.
+        viewModel.onTargetChange("99999999999")
+        assertEquals("7", viewModel.uiState.value.targetInput)
+
+        viewModel.onTargetChange("12a")
+        assertEquals("7", viewModel.uiState.value.targetInput)
+    }
+
+    @Test
+    fun target_isCappedSoAnUncompletableAchievementCannotBeCreated() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+        viewModel.onTargetChange("999")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 999) }
+    }
+
+    /**
      * The `saveInFlight` latch is what the double-tap guard reads. Without the `finally` that
      * releases it, a single failed write leaves the Save button permanently dead — the user taps
      * and nothing happens, forever, with no feedback. The second `onSave()` below is the part that

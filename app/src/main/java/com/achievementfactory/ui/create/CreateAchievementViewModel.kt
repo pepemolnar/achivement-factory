@@ -52,10 +52,18 @@ class CreateAchievementViewModel(
         _uiState.update { it.copy(accent = accent) }
     }
 
-    /** Clamps to a minimum of 1; a cleared or non-numeric field falls back to 1, never 0. */
+    /**
+     * Accepts the raw text and stores it verbatim, so the field never rewrites what the user is
+     * mid-way through typing (see [CreateAchievementUiState.target]). Input that could not become
+     * a valid target — anything non-digit, or more digits than
+     * [CreateAchievementUiState.MAX_TARGET_DIGITS] — is rejected outright, leaving the previous
+     * text in place rather than silently substituting a different number. A cleared field is
+     * allowed and reads back as [CreateAchievementUiState.MIN_TARGET], never 0.
+     */
     fun onTargetChange(rawTarget: String) {
-        val clamped = rawTarget.toIntOrNull()?.coerceAtLeast(1) ?: 1
-        _uiState.update { it.copy(target = clamped) }
+        if (!rawTarget.all(Char::isDigit)) return
+        if (rawTarget.length > CreateAchievementUiState.MAX_TARGET_DIGITS) return
+        _uiState.update { it.copy(targetInput = rawTarget) }
     }
 
     fun onToggleAdvanced() {
