@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 8/8 | Complete   | 2026-08-13 |
+| 1. Daily Achievements — Core Loop & Foundation | 8/8 | Complete    | 2026-08-13 |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |
