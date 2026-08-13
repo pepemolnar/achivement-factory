@@ -44,7 +44,18 @@ class PeriodWatcher(
         applicationScope.launch { reconcileStreaks.runAll(currentPeriodProvider.currentDailyKey.value) }
     }
 
-    /** Registers the receiver and the process-lifecycle observer. Call once, at process start. */
+    /**
+     * Registers the receiver and the process-lifecycle observer. Call once, at process start.
+     *
+     * There is deliberately no `stop()`. Both registrations are meant to last the process's whole
+     * lifetime — that is what makes "notice the day changing underneath a running process" work
+     * at all — and the OS tears down a runtime-registered receiver with the process anyway, so
+     * there is nothing to leak. A `stop()` with no call site would only be an invitation to call
+     * it wrongly: `unregisterReceiver` throws `IllegalArgumentException` if the receiver was never
+     * registered or was already unregistered, and `removeObserver` must run on the main thread.
+     * If a future phase genuinely needs to stop watching, add it *with* its call site and with a
+     * `started` guard, rather than restoring an unused one.
+     */
     fun start() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_DATE_CHANGED)
@@ -53,11 +64,5 @@ class PeriodWatcher(
         }
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
-    }
-
-    /** Unregisters both listeners — nothing is left listening once the process stops. */
-    fun stop() {
-        context.unregisterReceiver(receiver)
-        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
     }
 }
