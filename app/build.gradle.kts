@@ -104,6 +104,12 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 
+    // PeriodWatcher calls ContextCompat.registerReceiver / ContextCompat.RECEIVER_NOT_EXPORTED
+    // directly, so androidx.core is a first-order dependency of this module. It used to be present
+    // only transitively (via activity-compose/lifecycle): a future version bump that dropped that
+    // edge would break the build, or — worse — resolve an older `core` whose registerReceiver
+    // overload behaves differently on API 33+, which is a security-relevant API to be vague about.
+    implementation(libs.androidx.core.ktx)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
