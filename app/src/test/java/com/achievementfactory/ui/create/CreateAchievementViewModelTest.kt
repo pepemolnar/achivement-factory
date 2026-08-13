@@ -56,6 +56,7 @@ class CreateAchievementViewModelTest {
         assertEquals(1, state.target)
         assertFalse(state.advancedExpanded)
         assertNull(state.nameError)
+        assertNull(state.saveError)
         assertFalse(state.saved)
     }
 
@@ -164,6 +165,35 @@ class CreateAchievementViewModelTest {
 
         viewModel.onTargetChange("abc")
         assertEquals(1, viewModel.uiState.value.target)
+    }
+
+    /**
+     * The `saveInFlight` latch is what the double-tap guard reads. Without the `finally` that
+     * releases it, a single failed write leaves the Save button permanently dead — the user taps
+     * and nothing happens, forever, with no feedback. The second `onSave()` below is the part that
+     * fails if the latch is ever left stuck again.
+     */
+    @Test
+    fun onSave_whenTheWriteThrows_surfacesAnErrorAndLeavesTheButtonUsableForARetry() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        coEvery { repository.create(any(), any(), any(), any()) } throws
+            RuntimeException("SQLiteFullException") andThen 1L
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Couldn't save. Try again.", viewModel.uiState.value.saveError)
+        assertFalse(viewModel.uiState.value.saved)
+        assertNull("a write failure must not be reported as a name-validation error", viewModel.uiState.value.nameError)
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 2) { repository.create(any(), any(), any(), any()) }
+        assertTrue(viewModel.uiState.value.saved)
+        assertNull(viewModel.uiState.value.saveError)
     }
 
     @Test

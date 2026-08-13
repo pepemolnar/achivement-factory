@@ -56,13 +56,23 @@ fun CreateAchievementScreen(
         },
         bottomBar = {
             Surface {
-                Button(
-                    onClick = onSave,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Spacing.lg),
-                ) {
-                    Text("Save achievement")
+                Column(modifier = Modifier.padding(Spacing.lg)) {
+                    // A failed write belongs next to the control that attempted it, not under the
+                    // Name field — the name is not what went wrong.
+                    uiState.saveError?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = Spacing.sm),
+                        )
+                    }
+                    Button(
+                        onClick = onSave,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Save achievement")
+                    }
                 }
             }
         },
