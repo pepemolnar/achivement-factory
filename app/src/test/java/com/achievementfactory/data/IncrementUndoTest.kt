@@ -19,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -93,7 +94,7 @@ class IncrementUndoTest {
     fun increment_withNoExistingRow_createsRowAtCountOne() = runBlocking {
         val id = createAchievement(target = 3)
 
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
 
         assertEquals(1, outcome.newCount)
         assertFalse(outcome.isDone)
@@ -104,7 +105,7 @@ class IncrementUndoTest {
     fun increment_targetOne_completesOnFirstTap() = runBlocking {
         val id = createAchievement(target = 1)
 
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
 
         assertTrue(outcome.isDone)
         assertTrue(outcome.justCompleted)
@@ -115,12 +116,12 @@ class IncrementUndoTest {
         val id = createAchievement(target = 3)
 
         repository.increment(id)
-        val second = repository.increment(id)
+        val second = repository.increment(id)!!
         assertEquals(2, second.newCount)
         assertFalse(second.isDone)
         assertFalse(second.justCompleted)
 
-        val third = repository.increment(id)
+        val third = repository.increment(id)!!
         assertEquals(3, third.newCount)
         assertTrue(third.isDone)
         assertTrue(third.justCompleted)
@@ -133,7 +134,7 @@ class IncrementUndoTest {
         repository.increment(id)
         repository.increment(id)
 
-        val fourth = repository.increment(id)
+        val fourth = repository.increment(id)!!
 
         assertTrue(fourth.isDone)
         assertFalse(fourth.justCompleted)
@@ -152,9 +153,21 @@ class IncrementUndoTest {
     }
 
     @Test
+    fun increment_withAnIdThatNoLongerResolves_returnsNullRatherThanThrowing() = runBlocking {
+        val id = createAchievement(target = 1)
+        // The row vanishes between the frame the card rendered on and the tap landing — an
+        // ordinary race on a live-Room-backed list. It must be reported as a value the caller can
+        // ignore, never as a throw that would kill the process from inside `viewModelScope`.
+        database.openHelper.writableDatabase.execSQL("DELETE FROM achievements WHERE id = $id")
+
+        assertNull(repository.increment(id))
+        assertNull(countToday(id))
+    }
+
+    @Test
     fun undo_withTokenFromPrecedingIncrement_decrementsByOneAndRecomputesDone() = runBlocking {
         val id = createAchievement(target = 1)
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
 
         val result = repository.undo(outcome.undoToken)
 
@@ -166,7 +179,7 @@ class IncrementUndoTest {
     @Test
     fun undo_withStaleToken_changesNothingAndReturnsFalse() = runBlocking {
         val id = createAchievement(target = 5)
-        val first = repository.increment(id)
+        val first = repository.increment(id)!!
         repository.increment(id) // count now 2 — first.undoToken (expects 1) is now stale
 
         val result = repository.undo(first.undoToken)
@@ -178,7 +191,7 @@ class IncrementUndoTest {
     @Test
     fun undo_appliedTwiceWithSameToken_appliesOnce() = runBlocking {
         val id = createAchievement(target = 5)
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
 
         val firstUndo = repository.undo(outcome.undoToken)
         val secondUndo = repository.undo(outcome.undoToken)
@@ -191,7 +204,7 @@ class IncrementUndoTest {
     @Test
     fun undo_neverDrivesCountBelowZero() = runBlocking {
         val id = createAchievement(target = 1)
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
         repository.undo(outcome.undoToken) // count is now 0
 
         // A token that (incorrectly) still claims the count was 1 must be rejected — the
@@ -212,7 +225,7 @@ class IncrementUndoTest {
         val id = createAchievement(target = 1)
 
         currentDate.set(LocalDate.of(2026, 8, 11))
-        val day1Outcome = repository.increment(id)
+        val day1Outcome = repository.increment(id)!!
         assertTrue(day1Outcome.isDone)
 
         currentDate.set(LocalDate.of(2026, 8, 12))

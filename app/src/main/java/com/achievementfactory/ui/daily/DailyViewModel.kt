@@ -1,5 +1,6 @@
 package com.achievementfactory.ui.daily
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val LOAD_ERROR_MESSAGE = "Couldn't load your achievements. Restart the app to try again."
+private const val TAG = "DailyViewModel"
 
 /**
  * The Daily tab's ViewModel — the shape every later screen-level ViewModel in this project
@@ -58,10 +60,23 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
     private val _celebrations = Channel<CelebrationEvent>(Channel.BUFFERED)
     val celebrations: Flow<CelebrationEvent> = _celebrations.receiveAsFlow()
 
-    /** Logs one tap of progress. Always +1, regardless of the achievement's target (D-02). */
+    /**
+     * Logs one tap of progress. Always +1, regardless of the achievement's target (D-02).
+     *
+     * The write is wrapped in [runCatching] on purpose: `uiState`'s `.catch` only covers the
+     * *read* flow, so an exception thrown here — a `SQLiteException` from a full/corrupt/closed
+     * database — would reach the default uncaught-exception handler and kill the process on the
+     * app's primary interaction. A failed tap is dropped (and logged) instead; the next
+     * `observeDaily` emission still shows the true stored state, so the UI cannot end up
+     * disagreeing with the database. A `null` outcome means the row vanished between render and
+     * tap, which is a normal race rather than a failure.
+     */
     fun onIncrement(id: Long) {
         viewModelScope.launch {
-            val outcome = repository.increment(id)
+            val outcome = runCatching { repository.increment(id) }
+                .onFailure { Log.w(TAG, "increment failed for achievement id=$id", it) }
+                .getOrNull() ?: return@launch
+
             _undoRequests.send(outcome.undoToken)
             if (outcome.justCompleted) {
                 _heldBackIds.update { it + id }
@@ -76,10 +91,14 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
         }
     }
 
-    /** Reverses the specific increment [token] identifies. A stale/expired token is a no-op. */
+    /**
+     * Reverses the specific increment [token] identifies. A stale/expired token is a no-op, and
+     * so is a failed reversal — guarded for the same process-kill reason as [onIncrement].
+     */
     fun onUndo(token: UndoToken) {
         viewModelScope.launch {
-            repository.undo(token)
+            runCatching { repository.undo(token) }
+                .onFailure { Log.w(TAG, "undo failed for achievement id=${token.achievementId}", it) }
         }
     }
 

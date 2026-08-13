@@ -130,10 +130,15 @@ class AchievementRepository(
      * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) immediately
      * after the counter write, so the streak the UI reads on the next `observeDaily` emission is
      * already correct — the tap and the streak tick-up are the same interaction (TRACK-06).
+     *
+     * Returns `null` — without touching any row — when [achievementId] no longer resolves to an
+     * achievement. A row that was deleted between the frame the card rendered on and the tap
+     * landing is an ordinary race on a live-Room-backed list, not a programming error, so it is
+     * reported as a value the caller can ignore rather than as a thrown exception that would take
+     * the process down from inside a `viewModelScope` coroutine.
      */
-    suspend fun increment(achievementId: Long): IncrementOutcome {
-        val target = achievementDao.getById(achievementId)?.counterTarget
-            ?: error("Cannot increment unknown achievement id=$achievementId")
+    suspend fun increment(achievementId: Long): IncrementOutcome? {
+        val target = achievementDao.getById(achievementId)?.counterTarget ?: return null
         val todayKey = periodEngine.current(PeriodType.DAILY)
         val newCount = progressDao.incrementAndRead(achievementId, todayKey.value, target, clock.epochDay())
         val isDone = newCount >= target

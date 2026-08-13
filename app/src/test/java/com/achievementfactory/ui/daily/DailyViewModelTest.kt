@@ -126,6 +126,55 @@ class DailyViewModelTest {
         }
     }
 
+    /**
+     * The write path has no `.catch` of its own — `uiState`'s only covers the *read* flow — so an
+     * exception escaping `onIncrement`'s `viewModelScope.launch` reaches the default
+     * uncaught-exception handler and kills the process on the app's primary interaction. Asserting
+     * the next tap still produces its undo token is what makes this test fail if the guard is ever
+     * removed: without it the first tap's exception aborts the coroutine before anything else runs.
+     */
+    @Test
+    fun onIncrement_whenTheWriteThrows_isSwallowed_andTheNextTapStillWorks() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        val expectedToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1)
+        coEvery { repository.increment(1L) } throws RuntimeException("SQLiteFullException") andThen
+            IncrementOutcome(
+                newCount = 1,
+                isDone = true,
+                justCompleted = true,
+                newStreak = 1,
+                undoToken = expectedToken,
+            )
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.undoRequests.test {
+            viewModel.onIncrement(1L)
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+
+            viewModel.onIncrement(1L)
+            assertEquals(expectedToken, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun onUndo_whenTheReversalThrows_isSwallowed() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.undo(any()) } throws RuntimeException("SQLiteDatabaseCorruptException")
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.onUndo(UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Reaching here at all is the assertion: an unguarded launch would have propagated.
+        assertEquals(DailyUiState.Loading, viewModel.uiState.value)
+    }
+
     @Test
     fun contentPartition_achievementWhoseIdIsHeldBack_staysOutstandingDespiteBeingDone() {
         val heldBackDone = achievement(id = 1, isDone = true)

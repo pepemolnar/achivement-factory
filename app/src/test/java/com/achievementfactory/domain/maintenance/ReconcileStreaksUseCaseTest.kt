@@ -152,7 +152,7 @@ class ReconcileStreaksUseCaseTest {
             cachedForKey = currentDate.get().toString(),
         )
 
-        val outcome = repository.increment(id)
+        val outcome = repository.increment(id)!!
 
         val afterIncrement = database.achievementDao().getById(id)
         assertTrue(outcome.isDone)
