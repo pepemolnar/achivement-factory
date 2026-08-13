@@ -38,7 +38,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TRACK-05**: User can only log progress for the current period — earlier periods are read-only
 - [x] **TRACK-06**: App tracks a streak of consecutive completed periods for each achievement, counted in that achievement's own period unit
 - [x] **TRACK-07**: A missed period resets an achievement's streak to zero, with no grace period
-- [ ] **TRACK-08**: User can see the best streak ever reached for each achievement
+- [x] **TRACK-08**: User can see the best streak ever reached for each achievement
 - [ ] **TRACK-09**: App records the highest tier reached in each completed period
 - [x] **TRACK-10**: A closed period's recorded result is immutable and unaffected by later edits to the achievement
 
@@ -47,9 +47,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **PERIOD-01**: Daily periods run from local midnight to local midnight
 - [ ] **PERIOD-02**: Weekly periods run Monday through Sunday regardless of device locale
 - [ ] **PERIOD-03**: Monthly periods follow the calendar month
-- [ ] **PERIOD-04**: App detects a period rollover while running in the foreground and refreshes the tabs without needing a restart
+- [x] **PERIOD-04**: App detects a period rollover while running in the foreground and refreshes the tabs without needing a restart
 - [x] **PERIOD-05**: App correctly reconciles all missed periods when reopened after an extended absence
-- [ ] **PERIOD-06**: Period boundaries stay correct across daylight-saving transitions, timezone changes, and device clock changes
+- [x] **PERIOD-06**: Period boundaries stay correct across daylight-saving transitions, timezone changes, and device clock changes
 
 ### Todos
 
@@ -155,15 +155,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACK-05 | Phase 1 | Complete |
 | TRACK-06 | Phase 1 | Complete |
 | TRACK-07 | Phase 1 | Complete |
-| TRACK-08 | Phase 1 | Pending |
+| TRACK-08 | Phase 1 | Complete |
 | TRACK-09 | Phase 2 | Pending |
 | TRACK-10 | Phase 1 | Complete |
 | PERIOD-01 | Phase 1 | Complete |
 | PERIOD-02 | Phase 2 | Pending |
 | PERIOD-03 | Phase 2 | Pending |
-| PERIOD-04 | Phase 1 | Pending |
+| PERIOD-04 | Phase 1 | Complete |
 | PERIOD-05 | Phase 1 | Complete |
-| PERIOD-06 | Phase 1 | Pending |
+| PERIOD-06 | Phase 1 | Complete |
 | TODO-01 | Phase 4 | Pending |
 | TODO-02 | Phase 4 | Pending |
 | TODO-03 | Phase 4 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-08-13T09:53:51.016Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-08-13T10:22:16.843Z"
 last_activity: 2026-08-13 -- Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-27)
 ## Current Position
 
 Phase: 01 (daily-achievements-core-loop-foundation) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-08-13 -- Phase 01 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P03 | ~10min | 2 tasks | 8 files |
 | Phase 01 P04 | 45min | 2 tasks | 12 files |
 | Phase 01 P05 | 20min | 2 tasks | 15 files |
+| Phase 01 P06 | 25min | 2 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,9 @@ Recent decisions affecting current work:
 - [Phase 01-04]: DailyUiState.Content.partition() is a testable companion factory so heldBackIds behavior is unit-testable independent of DailyViewModel's hardcoded-empty set this plan
 - [Phase 01-05]: ReconcileStreaksUseCase.runFor gained a force parameter — the plan's literal unconditional same-key-skip guard would silently mask same-day increment/undo streak changes after the app-open runAll() pass
 - [Phase 01-05]: StreakFlameBadge renders as a content-sized pill (flame icon + number), not a literal 16dp-diameter circle, since a fixed-diameter circle cannot legibly hold a flame glyph plus a multi-digit streak number
+- [Phase ?]: [Phase 01-06]: ReconcileStreaksUseCase.runFor/runAll take PeriodKey as a caller-supplied parameter instead of resolving periodEngine.current() internally
+- [Phase ?]: CurrentPeriodProvider is the single source of what day it is for every read flow; AchievementRepository.observeDaily/observeDetail flatMapLatest over it so an already-collected flow re-subscribes across a day boundary
+- [Phase ?]: PeriodWatcher registers a runtime-only RECEIVER_NOT_EXPORTED broadcast receiver for date/time/timezone system broadcasts plus a ProcessLifecycleOwner onStart observer, funneling both into one refresh-and-reconcile signal (D-27: no monotonic-clock cross-check anywhere)
 
 ### Pending Todos
 
@@ -101,6 +105,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T09:53:51.006Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-08-13T10:22:16.832Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
