@@ -55,7 +55,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 01-05-PLAN.md — Streaks derived from the completion log, reconciled after absence, flame badge
+- [x] 01-05-PLAN.md — Streaks derived from the completion log, reconciled after absence, flame badge
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 4/8 | In Progress|  |
+| 1. Daily Achievements — Core Loop & Foundation | 5/8 | In Progress|  |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |
