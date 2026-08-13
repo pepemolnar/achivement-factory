@@ -9,6 +9,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 
@@ -84,18 +85,32 @@ object MotionSpecs {
 }
 
 /**
- * Reads the system "Remove animations" setting once per composition — `0f` on the animator
- * duration scale means it is on (01-UI-SPEC.md "Reduced motion"). This is the only place in the
- * codebase permitted to read that setting (D-25, grep-gated); every celebration composable calls
- * this once and threads the result through [MotionSpecs.resolve]/[MotionSpecs.resolveDelay]/
- * [MotionSpecs.resolvePlacement] rather than reading the system setting itself.
+ * Reads the system "Remove animations" setting — `0f` on the animator duration scale means it is
+ * on (01-UI-SPEC.md "Reduced motion"). This is the only place in the codebase permitted to read
+ * that setting (D-25, grep-gated); every celebration composable calls this once and threads the
+ * result through [MotionSpecs.resolve]/[MotionSpecs.resolveDelay]/[MotionSpecs.resolvePlacement]
+ * rather than reading the system setting itself.
+ *
+ * The `remember` is load-bearing, not just naming convention. `CompletionCelebration` calls this
+ * from a composable body that reads five `Animatable.value`s, so that body recomposes on every
+ * animation frame — without the cache each of those frames would perform a `ContentResolver`
+ * lookup on the main thread, and `DailyList` would do the same on every list recomposition.
+ * Keyed on the resolver so a different `Context` re-reads.
+ *
+ * The value is therefore sampled once per composition and does not react live to the setting
+ * being toggled while a screen is open. That is deliberate: mid-animation spec swaps are worse
+ * than a stale read, and the setting is re-sampled the next time the screen is composed. If live
+ * reaction is ever wanted, back it with a `ContentObserver` in a `produceState`/`DisposableEffect`
+ * rather than by removing the cache and polling every frame.
  */
 @Composable
 fun rememberReducedMotion(): Boolean {
-    val context = LocalContext.current
-    return Settings.Global.getFloat(
-        context.contentResolver,
-        Settings.Global.ANIMATOR_DURATION_SCALE,
-        1f,
-    ) == 0f
+    val resolver = LocalContext.current.contentResolver
+    return remember(resolver) {
+        Settings.Global.getFloat(
+            resolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
 }
