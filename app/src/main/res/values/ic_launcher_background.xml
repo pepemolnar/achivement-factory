@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the app-chrome accent (Material3 baseline primary, light-theme value) so the
+         adaptive launcher icon reads consistently with the in-app accent — see UI-SPEC Color table. -->
+    <color name="ic_launcher_background">#6750A4</color>
+</resources>

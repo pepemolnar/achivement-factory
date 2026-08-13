@@ -1,0 +1,15 @@
+# Local build/config, never committed
+local.properties
+.gradle/
+build/
+app/build/
+.idea/
+.kotlin/
+*.apk
+*.jks
+*.keystore
+keystore.properties
+
+# OS cruft
+.DS_Store
+Thumbs.db

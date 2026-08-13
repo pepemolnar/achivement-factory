@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme — window-level only. Material3 baseline color scheme and
+         typography are applied in Compose via AchievementFactoryTheme (ui/theme/Theme.kt),
+         not via this XML style; this exists to satisfy the manifest's required theme
+         reference and to set the launch/window background before Compose takes over. -->
+    <style name="Theme.AchievementFactory" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
