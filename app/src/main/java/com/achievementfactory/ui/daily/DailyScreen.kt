@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.ui.achievement.AchievementCard
+import com.achievementfactory.ui.celebration.CelebrationEvent
 import com.achievementfactory.ui.theme.Spacing
 import kotlinx.coroutines.flow.Flow
 
@@ -44,7 +46,12 @@ import kotlinx.coroutines.flow.Flow
  * nothing to show. [onCreateClick] navigates to the creation screen (wired in `AppNavHost`).
  * [onIncrement]/[onLongPress] forward the whole-card tap/long-press gestures (D-01–D-03).
  * [undoRequests] is a one-shot event stream, not state (PITFALLS 8) — each emission raises the
- * undo snackbar exactly once, never replayed on rotation/process restoration.
+ * undo snackbar exactly once, never shown again on rotation/process restoration. [celebrations] is
+ * the same one-shot pattern (CELEB-04): each `CelebrationEvent.Completed` is tracked in local
+ * composable state keyed by achievement id — so more than one card can celebrate at once — until
+ * the animation's own final stage calls [onCelebrationSettled], which releases the id from
+ * `DailyViewModel`'s held-back set (D-06). This plan tracks that local state; the animation that
+ * actually consumes it is wired in the following plan task.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,9 +62,12 @@ fun DailyScreen(
     onLongPress: (Long) -> Unit,
     undoRequests: Flow<UndoToken>,
     onUndo: (UndoToken) -> Unit,
+    celebrations: Flow<CelebrationEvent>,
+    onCelebrationSettled: (Long) -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val activeCelebrations = remember { mutableStateMapOf<Long, CelebrationEvent.Completed>() }
 
     LaunchedEffect(undoRequests, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -69,6 +79,16 @@ fun DailyScreen(
                 )
                 if (result == SnackbarResult.ActionPerformed) {
                     onUndo(token)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(celebrations, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            celebrations.collect { event ->
+                if (event is CelebrationEvent.Completed) {
+                    activeCelebrations[event.achievementId] = event
                 }
             }
         }

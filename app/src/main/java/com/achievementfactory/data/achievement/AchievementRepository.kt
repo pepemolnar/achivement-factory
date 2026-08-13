@@ -140,10 +140,15 @@ class AchievementRepository(
         val previousCount = newCount - 1
         val justCompleted = isDone && previousCount < target
         reconcileStreaks.runFor(achievementId, todayKey, force = true)
+        // Read back the freshly-reconciled streak so IncrementOutcome.newStreak is always this
+        // call's own true post-write value — never a separately-collected DailyUiState snapshot
+        // that could still be racing the same write.
+        val newStreak = achievementDao.getById(achievementId)?.currentStreak ?: 0
         return IncrementOutcome(
             newCount = newCount,
             isDone = isDone,
             justCompleted = justCompleted,
+            newStreak = newStreak,
             undoToken = UndoToken(achievementId, todayKey, newCount),
         )
     }

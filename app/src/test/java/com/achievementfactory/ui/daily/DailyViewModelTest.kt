@@ -113,6 +113,7 @@ class DailyViewModelTest {
             newCount = 1,
             isDone = true,
             justCompleted = true,
+            newStreak = 1,
             undoToken = expectedToken,
         )
 

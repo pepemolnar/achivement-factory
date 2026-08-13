@@ -42,6 +42,8 @@ fun AppNavHost(navController: NavHostController) {
                 onLongPress = { id -> navController.navigate(Routes.detailOf(id)) },
                 undoRequests = viewModel.undoRequests,
                 onUndo = viewModel::onUndo,
+                celebrations = viewModel.celebrations,
+                onCelebrationSettled = viewModel::onCelebrationSettled,
             )
         }
         composable(

@@ -10,14 +10,17 @@ import com.achievementfactory.AchievementFactoryApp
 import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.ui.celebration.CelebrationEvent
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val LOAD_ERROR_MESSAGE = "Couldn't load your achievements. Restart the app to try again."
@@ -29,22 +32,47 @@ private const val LOAD_ERROR_MESSAGE = "Couldn't load your achievements. Restart
  */
 class DailyViewModel(private val repository: AchievementRepository) : ViewModel() {
 
-    val uiState: StateFlow<DailyUiState> = repository.observeDaily()
-        .map<List<DailyAchievement>, DailyUiState> { achievements -> DailyUiState.Content.partition(achievements) }
+    // The seam plan 01-04 built and this plan populates: an achievement whose id is in this set
+    // stays in the `outstanding` group even though it is done, for exactly the duration of its
+    // completion celebration (D-06) — never derived from the celebration event stream itself, so
+    // uiState stays a plain reactive projection with no one-shot event folded into it.
+    private val _heldBackIds = MutableStateFlow<Set<Long>>(emptySet())
+
+    val uiState: StateFlow<DailyUiState> = combine(
+        repository.observeDaily(),
+        _heldBackIds,
+    ) { achievements, heldBackIds -> DailyUiState.Content.partition(achievements, heldBackIds) as DailyUiState }
         .catch { emit(DailyUiState.Error(LOAD_ERROR_MESSAGE)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyUiState.Loading)
 
-    // Undo is an event, not state (PITFALLS 8/Anti-Pattern 1) — a Channel with no replay buffer
-    // means a snackbar never re-shows on rotation/process restoration. Never fold this token
-    // into DailyUiState.
+    // Undo is an event, not state (PITFALLS 8/Anti-Pattern 1) — a Channel keeps no buffered
+    // history, so a snackbar never re-shows on rotation/process restoration. Never fold this
+    // token into DailyUiState.
     private val _undoRequests = Channel<UndoToken>(Channel.BUFFERED)
     val undoRequests: Flow<UndoToken> = _undoRequests.receiveAsFlow()
+
+    // Same one-shot pattern as undoRequests (CELEB-04): a Channel keeps no buffered history, so a
+    // collector that subscribes after rotation/process restoration receives nothing, never the
+    // last-delivered event. Emitted only from the exact transition edge
+    // (IncrementOutcome.justCompleted), never derived from a state snapshot.
+    private val _celebrations = Channel<CelebrationEvent>(Channel.BUFFERED)
+    val celebrations: Flow<CelebrationEvent> = _celebrations.receiveAsFlow()
 
     /** Logs one tap of progress. Always +1, regardless of the achievement's target (D-02). */
     fun onIncrement(id: Long) {
         viewModelScope.launch {
             val outcome = repository.increment(id)
             _undoRequests.send(outcome.undoToken)
+            if (outcome.justCompleted) {
+                _heldBackIds.update { it + id }
+                _celebrations.send(
+                    CelebrationEvent.Completed(
+                        achievementId = id,
+                        newStreak = outcome.newStreak,
+                        isFirstFlame = outcome.newStreak == 1,
+                    ),
+                )
+            }
         }
     }
 
@@ -53,6 +81,16 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
         viewModelScope.launch {
             repository.undo(token)
         }
+    }
+
+    /**
+     * Called once the completion celebration's final stage finishes — releases [id] from the
+     * held-back set so its card is free to sink into Done on the next [uiState] emission (D-06).
+     * Idempotent: calling it for an id that was never held back, or twice for the same id, is a
+     * no-op.
+     */
+    fun onCelebrationSettled(id: Long) {
+        _heldBackIds.update { it - id }
     }
 
     companion object {

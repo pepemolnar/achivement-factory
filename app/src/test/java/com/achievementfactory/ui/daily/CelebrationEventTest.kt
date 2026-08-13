@@ -1,0 +1,223 @@
+package com.achievementfactory.ui.daily
+
+import app.cash.turbine.test
+import com.achievementfactory.data.achievement.AccentSwatch
+import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.domain.model.DailyAchievement
+import com.achievementfactory.domain.model.IncrementOutcome
+import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.period.PeriodKey
+import com.achievementfactory.ui.celebration.CelebrationEvent
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Proves CELEB-04 end to end against [DailyViewModel]'s real `celebrations` channel and
+ * `heldBackIds` seam, with [AchievementRepository] mocked via MockK (final class, same
+ * convention as [DailyViewModelTest]). Every case in plan 01-07 Task 1's `<behavior>` list has a
+ * dedicated test here — most importantly the late-collector case, which is the entire mechanism
+ * behind "never replays on rotation/recomposition/restart."
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class CelebrationEventTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    private fun achievement(id: Long, isDone: Boolean, currentStreak: Int = 0) = DailyAchievement(
+        id = id,
+        name = "Achievement $id",
+        icon = null,
+        accent = AccentSwatch.SKY,
+        target = 1,
+        count = if (isDone) 1 else 0,
+        isDone = isDone,
+        currentStreak = currentStreak,
+        bestStreak = currentStreak,
+    )
+
+    private fun outcome(
+        newCount: Int,
+        isDone: Boolean,
+        justCompleted: Boolean,
+        newStreak: Int,
+        expectedCount: Int = newCount,
+    ) = IncrementOutcome(
+        newCount = newCount,
+        isDone = isDone,
+        justCompleted = justCompleted,
+        newStreak = newStreak,
+        undoToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = expectedCount),
+    )
+
+    @Test
+    fun targetOneAchievement_completingTap_emitsExactlyOneEvent() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertEquals(1L, event.achievementId)
+            assertEquals(1, event.newStreak)
+            assertTrue(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun targetThreeAchievement_onlyTheThirdCompletingTapEmitsAnEvent() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returnsMany listOf(
+            outcome(newCount = 1, isDone = false, justCompleted = false, newStreak = 0),
+            outcome(newCount = 2, isDone = false, justCompleted = false, newStreak = 0),
+            outcome(newCount = 3, isDone = true, justCompleted = true, newStreak = 1),
+        )
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            viewModel.onIncrement(1L)
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertEquals(1, event.newStreak)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun tapPastTheTarget_emitsNoEvent() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 4, isDone = true, justCompleted = false, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun lateCollector_afterAnEventWasAlreadyDelivered_receivesNothing() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // No replay buffer (Channel, not StateFlow/SharedFlow with replay > 0) — a collector that
+        // subscribes after the event was already delivered gets nothing, not the last value.
+        viewModel.celebrations.test {
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun undoingTheCompletingTap_thenRecompleting_emitsASecondEvent() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        val firstOutcome = outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+        coEvery { repository.increment(1L) } returnsMany listOf(firstOutcome, firstOutcome)
+        coEvery { repository.undo(any()) } returns true
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            awaitItem()
+
+            viewModel.onUndo(firstOutcome.undoToken)
+            viewModel.onIncrement(1L)
+            awaitItem()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun isFirstFlame_isTrueOnlyWhenTheStreakWentFromZeroToOne() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 4)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertFalse(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun heldBackIds_containsTheAchievementFromEmissionUntilSettled_andItStaysOutstanding() = runTest(testDispatcher) {
+        val doneAchievement = achievement(id = 1, isDone = true, currentStreak = 1)
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(listOf(doneAchievement))
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.uiState.test {
+            assertEquals(DailyUiState.Loading, awaitItem())
+            val initial = awaitItem() as DailyUiState.Content
+            assertTrue(initial.done.any { it.id == 1L })
+            assertFalse(initial.heldBackIds.contains(1L))
+
+            viewModel.onIncrement(1L)
+            val heldBack = awaitItem() as DailyUiState.Content
+            assertTrue("achievement stays outstanding while held back", heldBack.outstanding.any { it.id == 1L })
+            assertFalse(heldBack.done.any { it.id == 1L })
+            assertTrue(heldBack.heldBackIds.contains(1L))
+
+            viewModel.onCelebrationSettled(1L)
+            val settled = awaitItem() as DailyUiState.Content
+            assertTrue(settled.done.any { it.id == 1L })
+            assertFalse(settled.heldBackIds.contains(1L))
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+}
