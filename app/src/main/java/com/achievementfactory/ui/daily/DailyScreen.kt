@@ -30,8 +30,7 @@ import com.achievementfactory.ui.theme.Spacing
 /**
  * The Daily tab (NAV-04, TRACK-02, D-05): renders live Room data as neutral cards, groups
  * completed items under a Done divider, and shows the two-line empty state when there is
- * nothing to show. [onCreateClick] is wired to a no-op in this plan — plan 01-03 connects it to
- * the create route.
+ * nothing to show. [onCreateClick] navigates to the creation screen (wired in `AppNavHost`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
