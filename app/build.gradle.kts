@@ -87,6 +87,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
 
+    testImplementation(composeBom)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -94,6 +95,9 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.room.testing)
     testImplementation(libs.androidx.test.core)
+    // Robolectric supports Compose semantics-tree assertions directly on the JVM (no device/
+    // emulator needed) — used for the streak-badge hidden-at-zero behavior test (D-08).
+    testImplementation(libs.compose.ui.test.junit4)
 
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.room.testing)

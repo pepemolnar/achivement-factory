@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,8 +36,9 @@ import com.achievementfactory.ui.theme.color
  * no stepper, no swipe gesture, so one tap is always exactly +1 regardless of the achievement's
  * target. [onLongPress] opens the detail screen; it is a no-op at every call site in this plan
  * and wired to real navigation in plan 01-06 (D-03) — the parameter exists now so that wiring is
- * a one-line change then, not a signature change. No streak badge in this plan — every
- * achievement starts at streak 0, and that indicator arrives, hidden-at-zero, in plan 01-05.
+ * a one-line change then, not a signature change. [StreakFlameBadge] anchors to the top-end
+ * corner of the icon/ring cluster, overlapping it by ~4dp, and composes nothing at streak 0
+ * (D-07, D-08) — the name and progress ring still lead the card's hierarchy.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -84,6 +86,13 @@ fun AchievementCard(
                 } else {
                     AchievementGlyph(icon = achievement.icon, name = achievement.name, accent = accentColor)
                 }
+                StreakFlameBadge(
+                    streak = achievement.currentStreak,
+                    accent = accentColor,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = Spacing.xs, y = -Spacing.xs),
+                )
             }
             Spacer(modifier = Modifier.width(Spacing.sm))
             Column {
