@@ -37,7 +37,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.ui.achievement.AchievementCard
 import com.achievementfactory.ui.celebration.CelebrationEvent
+import com.achievementfactory.ui.theme.MotionSpecs
 import com.achievementfactory.ui.theme.Spacing
+import com.achievementfactory.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -48,10 +50,12 @@ import kotlinx.coroutines.flow.Flow
  * [undoRequests] is a one-shot event stream, not state (PITFALLS 8) — each emission raises the
  * undo snackbar exactly once, never shown again on rotation/process restoration. [celebrations] is
  * the same one-shot pattern (CELEB-04): each `CelebrationEvent.Completed` is tracked in local
- * composable state keyed by achievement id — so more than one card can celebrate at once — until
- * the animation's own final stage calls [onCelebrationSettled], which releases the id from
- * `DailyViewModel`'s held-back set (D-06). This plan tracks that local state; the animation that
- * actually consumes it is wired in the following plan task.
+ * composable state keyed by achievement id — so more than one card can celebrate at once — and
+ * forwarded into that specific `AchievementCard`, until the animation's own final stage calls
+ * [onCelebrationSettled], which both clears the local entry and releases the id from
+ * `DailyViewModel`'s held-back set (D-06). The card's reorder into Done then plays through
+ * `Modifier.animateItem` with `MotionSpecs.cardSink`, collapsed under reduced motion the same way
+ * every other stage is (D-25).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +115,17 @@ fun DailyScreen(
             is DailyUiState.Content -> if (uiState.isEmpty) {
                 EmptyBody(innerPadding)
             } else {
-                DailyList(innerPadding, uiState, onIncrement, onLongPress)
+                DailyList(
+                    innerPadding = innerPadding,
+                    content = uiState,
+                    onIncrement = onIncrement,
+                    onLongPress = onLongPress,
+                    activeCelebrations = activeCelebrations,
+                    onCelebrationSettled = { id ->
+                        activeCelebrations.remove(id)
+                        onCelebrationSettled(id)
+                    },
+                )
             }
         }
     }
@@ -169,7 +183,12 @@ private fun DailyList(
     content: DailyUiState.Content,
     onIncrement: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
+    activeCelebrations: Map<Long, CelebrationEvent.Completed>,
+    onCelebrationSettled: (Long) -> Unit,
 ) {
+    val reducedMotion = rememberReducedMotion()
+    val placementSpec = MotionSpecs.resolvePlacement(MotionSpecs.cardSink, reducedMotion)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -185,6 +204,9 @@ private fun DailyList(
                 achievement = achievement,
                 onIncrement = { onIncrement(achievement.id) },
                 onLongPress = { onLongPress(achievement.id) },
+                celebration = activeCelebrations[achievement.id],
+                onCelebrationSettled = { onCelebrationSettled(achievement.id) },
+                modifier = Modifier.animateItem(placementSpec = placementSpec),
             )
         }
 
@@ -197,6 +219,7 @@ private fun DailyList(
                     achievement = achievement,
                     onIncrement = { onIncrement(achievement.id) },
                     onLongPress = { onLongPress(achievement.id) },
+                    modifier = Modifier.animateItem(placementSpec = placementSpec),
                 )
             }
         }

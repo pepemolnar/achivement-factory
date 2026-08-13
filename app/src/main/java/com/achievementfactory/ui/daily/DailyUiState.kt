@@ -3,7 +3,7 @@ package com.achievementfactory.ui.daily
 import com.achievementfactory.domain.model.DailyAchievement
 
 /**
- * The Daily tab's render state. [Content] never carries a "should animate"/"show confetti"
+ * The Daily tab's render state. [Content] never carries a "should animate"/"play the celebration"
  * style field — that separation is what makes the one-shot completion-event channel (CELEB-04,
  * plan 01-07) possible; a `StateFlow` cannot express a one-shot event, so events must never
  * live here.

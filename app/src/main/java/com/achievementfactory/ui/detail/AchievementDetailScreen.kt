@@ -105,9 +105,8 @@ private fun DetailBody(innerPadding: PaddingValues, detail: AchievementDetail) {
     ) {
         Box(contentAlignment = Alignment.Center) {
             ProgressRing(
-                progress = progress.coerceIn(0f, 1f),
+                progress = if (detail.isDone) 1f else progress.coerceIn(0f, 1f),
                 accent = accentColor,
-                closed = detail.isDone,
                 modifier = Modifier.size(Spacing.iconClusterSize + Spacing.xs * 2),
             )
             if (detail.isDone) {
