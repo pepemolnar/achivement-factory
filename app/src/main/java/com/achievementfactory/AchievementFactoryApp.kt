@@ -3,9 +3,15 @@ package com.achievementfactory
 import android.app.Application
 
 /**
- * Application entry point. This is a minimal placeholder for Task 1 (build-scaffolding) — it
- * exists solely so the manifest's `android:name` reference resolves and the app builds. Task 3
- * fills in the real content: constructing the single AppContainer instance that is this
- * project's entire dependency-injection mechanism.
+ * Application entry point. Constructs the single [AppContainer] instance in [onCreate] — this
+ * project's entire dependency-injection mechanism (see AppContainer.kt: no DI framework).
  */
-class AchievementFactoryApp : Application()
+class AchievementFactoryApp : Application() {
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+    }
+}
