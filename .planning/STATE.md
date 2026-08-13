@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-12T13:06:43.745Z"
-last_activity: 2026-07-27 — ROADMAP.md and STATE.md created from PROJECT.md, REQUIREMENTS.md, and research
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-08-13T08:40:19.069Z"
+last_activity: 2026-08-13 -- Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 8
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-27)
 
 **Core value:** The satisfying loop — check off → streak ticks up → celebration — good enough that you actually open the app every day.
-**Current focus:** Phase 1 — Daily Achievements — Core Loop & Foundation
+**Current focus:** Phase 01 — daily-achievements-core-loop-foundation
 
 ## Current Position
 
-Phase: 1 of 5 (Daily Achievements — Core Loop & Foundation)
-Plan: 0 of TBD in current phase
+Phase: 01 (daily-achievements-core-loop-foundation) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-07-27 — ROADMAP.md and STATE.md created from PROJECT.md, REQUIREMENTS.md, and research
+Last activity: 2026-08-13 -- Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 34min | 3 tasks | 34 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,9 @@ Recent decisions affecting current work:
 - [Roadmap]: Phase 1 stays narrow (daily achievements only) but settles the period engine (civil dates, hardcoded Monday, week identified by Monday's LocalDate), Room migration-safety discipline, and the one-shot celebration-event channel — the three foundations everything else depends on.
 - [Roadmap]: CELEB-01 (tier-scaled celebration intensity) and CELEB-02 (mid-period tier upgrade) are mapped to Phase 2, where tiers first exist to scale against; Phase 1 establishes only the one-shot/no-replay mechanics (CELEB-04) using a basic completion celebration.
 - [Roadmap]: PERIOD-04 (foreground rollover) and PERIOD-05 (reconciliation after absence) were pulled into Phase 1 rather than Phase 2, because TRACK-07 ("a missed period resets the streak") is not genuinely true for daily achievements without them.
+- [Phase ?]: Gradle wrapper pinned to 9.4.1 (not 9.1.x) — AGP 9.2.0's own version-check requires Gradle >= 9.4.1
+- [Phase ?]: Dropped org.jetbrains.kotlin.android plugin — AGP 9.0+ built-in Kotlin support replaces it; Kotlin 2.3.20 pinned via top-level buildscript classpath override instead
+- [Phase ?]: JDK 21 and Android SDK cmdline-tools installed via direct zip download+extract to user-writable paths, not winget/MSI (which hung on an interactive UAC dialog in this sandboxed session)
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:29:59.517Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-daily-achievements-core-loop-foundation/01-UI-SPEC.md
+Last session: 2026-08-13T08:40:19.058Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None

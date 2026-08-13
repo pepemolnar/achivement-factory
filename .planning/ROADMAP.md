@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Toolchain, Gradle scaffold, civil-date period engine, Room schema v1 with export
+- [x] 01-01-PLAN.md — Toolchain, Gradle scaffold, civil-date period engine, Room schema v1 with export
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 0/8 | Planned | - |
+| 1. Daily Achievements — Core Loop & Foundation | 1/8 | In Progress|  |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |

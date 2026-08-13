@@ -44,7 +44,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Periods
 
-- [ ] **PERIOD-01**: Daily periods run from local midnight to local midnight
+- [x] **PERIOD-01**: Daily periods run from local midnight to local midnight
 - [ ] **PERIOD-02**: Weekly periods run Monday through Sunday regardless of device locale
 - [ ] **PERIOD-03**: Monthly periods follow the calendar month
 - [ ] **PERIOD-04**: App detects a period rollover while running in the foreground and refreshes the tabs without needing a restart
@@ -78,10 +78,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Data
 
-- [ ] **DATA-01**: All state persists in a local Room database and the app functions fully offline
-- [ ] **DATA-02**: App declares no `INTERNET` permission, making the offline guarantee OS-enforced
-- [ ] **DATA-03**: Room schemas are exported and migrations are tested; destructive migration is never used, so streak history cannot be silently lost
-- [ ] **DATA-04**: App state survives process death and device restart
+- [x] **DATA-01**: All state persists in a local Room database and the app functions fully offline
+- [x] **DATA-02**: App declares no `INTERNET` permission, making the offline guarantee OS-enforced
+- [x] **DATA-03**: Room schemas are exported and migrations are tested; destructive migration is never used, so streak history cannot be silently lost
+- [x] **DATA-04**: App state survives process death and device restart
 - [ ] **DATA-05**: App builds as a release APK and installs directly on the owner's device
 
 ## v2 Requirements
@@ -158,7 +158,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACK-08 | Phase 1 | Pending |
 | TRACK-09 | Phase 2 | Pending |
 | TRACK-10 | Phase 1 | Pending |
-| PERIOD-01 | Phase 1 | Pending |
+| PERIOD-01 | Phase 1 | Complete |
 | PERIOD-02 | Phase 2 | Pending |
 | PERIOD-03 | Phase 2 | Pending |
 | PERIOD-04 | Phase 1 | Pending |
@@ -180,13 +180,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CELEB-04 | Phase 1 | Pending |
 | CELEB-05 | Phase 5 | Pending |
 | CELEB-06 | Phase 5 | Pending |
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
+| DATA-02 | Phase 1 | Complete |
+| DATA-03 | Phase 1 | Complete |
+| DATA-04 | Phase 1 | Complete |
 | DATA-05 | Phase 1 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 53 total *(corrected from 51 — original count undercounted the ACH/TIER/TRACK/PERIOD/TODO/NAV/CELEB/DATA sections above; verified by counting distinct REQ-IDs)*
 - Mapped to phases: 53
 - Unmapped: 0 ✓
