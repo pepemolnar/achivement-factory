@@ -57,6 +57,20 @@ object MotionSpecs {
     const val CHECK_MORPH_DELAY_MS = 250L
     const val FLAME_DELAY_MS = 400L
 
+    /**
+     * Hard ceiling on how long a just-completed achievement may be held out of the Done section
+     * waiting for its celebration to report [CelebrationStage].SETTLED (D-06). The sequence itself
+     * finishes well inside this — [FLAME_DELAY_MS] plus the flame spring's settle — so on the happy
+     * path `onCelebrationSettled` always wins the race and this value is never reached.
+     *
+     * It exists because the settle callback is tied to the celebrating card's *composition*: an
+     * `Activity` recreation mid-animation, the card scrolling out of the `LazyColumn`, or
+     * navigating away all cancel the sequence before SETTLED. Without a ceiling the achievement
+     * would stay pinned above the Done divider for the ViewModel's whole lifetime, with no way for
+     * the user to clear it. List correctness must never depend on an animation completing.
+     */
+    const val CELEBRATION_MAX_HOLD_MS = 2_000L
+
     /** The one accessor every [Float]-valued celebration spec must be read through. */
     fun resolve(spec: AnimationSpec<Float>, reducedMotion: Boolean): AnimationSpec<Float> =
         if (reducedMotion) reducedCollapse else spec

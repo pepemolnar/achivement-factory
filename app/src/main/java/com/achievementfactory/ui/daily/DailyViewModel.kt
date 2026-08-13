@@ -12,7 +12,10 @@ import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.ui.celebration.CelebrationEvent
+import com.achievementfactory.ui.theme.MotionSpecs
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,6 +42,11 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
     // completion celebration (D-06) — never derived from the celebration event stream itself, so
     // uiState stays a plain reactive projection with no one-shot event folded into it.
     private val _heldBackIds = MutableStateFlow<Set<Long>>(emptySet())
+
+    // One self-expiring release timer per held-back id — see [holdBack]. Main-thread confined:
+    // every reader/writer runs on viewModelScope (Dispatchers.Main.immediate) or on a main-thread
+    // UI callback, so a plain map needs no extra synchronization.
+    private val heldBackReleaseTimers = mutableMapOf<Long, Job>()
 
     val uiState: StateFlow<DailyUiState> = combine(
         repository.observeDaily(),
@@ -79,7 +87,7 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
 
             _undoRequests.send(outcome.undoToken)
             if (outcome.justCompleted) {
-                _heldBackIds.update { it + id }
+                holdBack(id)
                 _celebrations.send(
                     CelebrationEvent.Completed(
                         achievementId = id,
@@ -106,10 +114,37 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
      * Called once the completion celebration's final stage finishes — releases [id] from the
      * held-back set so its card is free to sink into Done on the next [uiState] emission (D-06).
      * Idempotent: calling it for an id that was never held back, or twice for the same id, is a
-     * no-op.
+     * no-op. This is the *fast path*; [holdBack]'s ceiling is the backstop when it never fires.
      */
     fun onCelebrationSettled(id: Long) {
+        releaseHeldBack(id)
+    }
+
+    /**
+     * Pins [id] into the `outstanding` group for the duration of its celebration, with a hard
+     * ceiling of [MotionSpecs.CELEBRATION_MAX_HOLD_MS].
+     *
+     * The ceiling is the point: [onCelebrationSettled] is driven by a `LaunchedEffect` tied to the
+     * celebrating card's composition, and an `Activity` recreation mid-animation, the card
+     * scrolling out of the `LazyColumn`, or navigating away all cancel that effect before it can
+     * report SETTLED. `_heldBackIds` lives here in the ViewModel and outlives all three, so
+     * without the timer a done achievement would sit above the Done divider — rendering a full
+     * ring, un-clearable — for the rest of this ViewModel's life. Whether the list is correct must
+     * not depend on an animation being allowed to finish.
+     */
+    private fun holdBack(id: Long) {
+        _heldBackIds.update { it + id }
+        heldBackReleaseTimers.remove(id)?.cancel()
+        heldBackReleaseTimers[id] = viewModelScope.launch {
+            delay(MotionSpecs.CELEBRATION_MAX_HOLD_MS)
+            releaseHeldBack(id)
+        }
+    }
+
+    private fun releaseHeldBack(id: Long) {
+        val timer = heldBackReleaseTimers.remove(id)
         _heldBackIds.update { it - id }
+        timer?.cancel()
     }
 
     companion object {

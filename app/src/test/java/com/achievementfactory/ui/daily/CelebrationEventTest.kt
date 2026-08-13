@@ -8,6 +8,7 @@ import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.PeriodKey
 import com.achievementfactory.ui.celebration.CelebrationEvent
+import com.achievementfactory.ui.theme.MotionSpecs
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -186,6 +188,42 @@ class CelebrationEventTest {
             viewModel.onIncrement(1L)
             val event = awaitItem() as CelebrationEvent.Completed
             assertFalse(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * The failure this guards is CR-03: `onCelebrationSettled` is driven by a `LaunchedEffect`
+     * tied to the celebrating card's composition, so an `Activity` recreation mid-animation, the
+     * card scrolling out of the `LazyColumn`, or navigating away all cancel it before SETTLED —
+     * while `_heldBackIds` lives in the ViewModel and survives all three. Without the ceiling the
+     * achievement is stranded above the Done divider for the ViewModel's whole lifetime. Note the
+     * complete absence of an `onCelebrationSettled` call below: that is the point of the test.
+     */
+    @Test
+    fun heldBackId_whoseCelebrationIsCancelledBeforeSettling_isReleasedByTheHardCeiling() = runTest(testDispatcher) {
+        val doneAchievement = achievement(id = 1, isDone = true, currentStreak = 1)
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(listOf(doneAchievement))
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.uiState.test {
+            assertEquals(DailyUiState.Loading, awaitItem())
+            awaitItem()
+
+            viewModel.onIncrement(1L)
+            val heldBack = awaitItem() as DailyUiState.Content
+            assertTrue(heldBack.outstanding.any { it.id == 1L })
+
+            advanceTimeBy(MotionSpecs.CELEBRATION_MAX_HOLD_MS + 1)
+
+            val released = awaitItem() as DailyUiState.Content
+            assertTrue("the ceiling must release a celebration that never settled", released.done.any { it.id == 1L })
+            assertFalse(released.heldBackIds.contains(1L))
+
             cancelAndIgnoreRemainingEvents()
         }
     }

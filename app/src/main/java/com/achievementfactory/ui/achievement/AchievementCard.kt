@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,9 +50,10 @@ import com.achievementfactory.ui.theme.color
  *
  * [celebration] is non-null for exactly the duration of this achievement's one-shot completion
  * event (CELEB-04) — while present, [CompletionCelebration] owns the ring/checkmark/flame
- * animation clock entirely (plan 01-07); [onCelebrationSettled] fires once, when the sequence's
- * final stage completes, and is what the caller uses to release the card into the Done section
- * (D-06) — never a fixed delay. Outside a celebration, the card falls back to the same static
+ * animation clock entirely (plan 01-07); [onCelebrationSettled] is what the caller uses to release
+ * the card into the Done section (D-06) — never a fixed delay. It fires on whichever comes first:
+ * the sequence's final stage completing, or this card leaving composition with a celebration still
+ * running. It is required to be idempotent for that reason. Outside a celebration, the card falls back to the same static
  * resting/done rendering plan 01-04 already established, reached this time by the animation
  * rather than a swap (D-11).
  */
@@ -76,6 +78,18 @@ fun AchievementCard(
         animationSpec = MotionSpecs.ringSweep,
         label = "progressRingSweep",
     )
+
+    // A celebration that leaves composition before reaching SETTLED — the card scrolled out of
+    // the LazyColumn, the Activity was recreated, the user navigated away — never fires its
+    // [onStage] settle callback, so the caller has to be told here instead. Two things depend on
+    // it: the card is released from DailyViewModel's held-back set (otherwise a done achievement
+    // stays pinned above the Done divider), and the event is dropped so scrolling back into view
+    // does not restart the whole sequence on an already-completed card.
+    if (celebration != null) {
+        DisposableEffect(celebration) {
+            onDispose { onCelebrationSettled() }
+        }
+    }
 
     Card(
         modifier = modifier
