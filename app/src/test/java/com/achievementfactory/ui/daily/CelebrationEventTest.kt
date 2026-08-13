@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -127,6 +128,9 @@ class CelebrationEventTest {
 
         viewModel.celebrations.test {
             viewModel.onIncrement(1L)
+            // Let the write coroutine actually run before asserting nothing came out of it —
+            // otherwise this passes simply because the increment had not been dispatched yet.
+            testDispatcher.scheduler.advanceUntilIdle()
             expectNoEvents()
         }
     }
@@ -146,9 +150,49 @@ class CelebrationEventTest {
             cancelAndIgnoreRemainingEvents()
         }
 
-        // No replay buffer (Channel, not StateFlow/SharedFlow with replay > 0) — a collector that
-        // subscribes after the event was already delivered gets nothing, not the last value.
+        // No replay buffer — a collector that subscribes after the event was already delivered
+        // gets nothing, not the last value.
         viewModel.celebrations.test {
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+        }
+    }
+
+    /**
+     * The case [lateCollector_afterAnEventWasAlreadyDelivered_receivesNothing] cannot reach, and
+     * the one CELEB-04 is actually about. That test awaits the item *before* re-subscribing, so it
+     * only ever exercises an already-drained stream and passes on any implementation.
+     *
+     * Here nothing is subscribed at emission time — exactly the window `DailyScreen` opens by
+     * collecting under `repeatOnLifecycle(STARTED)`, since the DB write and the emit happen
+     * asynchronously in `viewModelScope`, which outlives an `Activity` recreation. A
+     * `Channel(Channel.BUFFERED)` retains the undelivered event here and hands it to the next
+     * collector, replaying the whole celebration on an already-completed card after rotation; a
+     * zero-replay `SharedFlow` drops it. This test fails against the former and passes against
+     * the latter, which is the entire point of it.
+     */
+    @Test
+    fun eventEmittedWhileNothingIsSubscribed_isNotDeliveredToTheNextCollector() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns
+            outcome(newCount = 1, isDone = true, justCompleted = true, newStreak = 1)
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.onIncrement(1L)
+        advanceUntilIdle()
+
+        // The inner advanceUntilIdle calls matter: they let a collector that *did* receive a
+        // buffered element actually run and hand it to Turbine. Without them `expectNoEvents()`
+        // would only be observing a scheduler that had not been given the chance to deliver
+        // anything yet, and would pass against a buffering implementation too.
+        viewModel.celebrations.test {
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+        }
+        viewModel.undoRequests.test {
+            testDispatcher.scheduler.advanceUntilIdle()
             expectNoEvents()
         }
     }

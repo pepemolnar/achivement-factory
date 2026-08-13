@@ -39,11 +39,15 @@ class CelebrationInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    private fun createAndCompleteAchievement() {
+    private fun createAchievement() {
         composeRule.onNodeWithContentDescription("Add achievement").performClick()
         composeRule.onNodeWithText("Name").performTextInput(ACHIEVEMENT_NAME)
         composeRule.onNodeWithText("Save achievement").performClick()
         composeRule.waitForIdle()
+    }
+
+    private fun createAndCompleteAchievement() {
+        createAchievement()
 
         // Target defaults to 1 (D-17) — the one completing tap fires the celebration.
         composeRule.onNodeWithText(ACHIEVEMENT_NAME).performClick()
@@ -67,6 +71,46 @@ class CelebrationInstrumentedTest {
         // recreation must receive nothing, so no card should be actively celebrating.
         val stillCelebrating = composeRule.onAllNodes(celebratingNodeMatcher).fetchSemanticsNodes()
         assertTrue("celebration replayed after Activity recreation: $stillCelebrating", stillCelebrating.isEmpty())
+    }
+
+    /**
+     * The replay window the two tests either side of this one cannot reach.
+     * [createAndCompleteAchievement] waits for the sequence to fully settle *before* recreating,
+     * so it only ever exercises an already-drained event stream — it passes even against an
+     * implementation that buffers undelivered events. Here the recreation lands while the tap's
+     * write is still in flight or the sequence is still running.
+     *
+     * Which of the two sub-cases actually occurs is inherently racy and this test deliberately
+     * does not try to pin it down, because the required outcome is the same either way:
+     *
+     *  - The emit happens *before* the recreation: the celebration is running, and recreating
+     *    disposes it. `DailyScreen`'s `activeCelebrations` is `remember`, not `rememberSaveable`,
+     *    so the new composition starts with no active celebration and there is nothing to replay.
+     *  - The emit happens *after* the recreation: nothing is subscribed at that instant (the
+     *    screen's collector runs under `repeatOnLifecycle(STARTED)`), so a zero-replay
+     *    `SharedFlow` drops the event. A `Channel(Channel.BUFFERED)` would instead hand it to the
+     *    collector that attaches after recreation, and the celebration would visibly replay on an
+     *    already-completed card — which is the regression this asserts against.
+     *
+     * Either way: no node may be celebrating once the recreated screen is idle.
+     */
+    @Test
+    fun recreatingTheActivityMidCelebration_doesNotReplayTheCelebrationAfterwards() {
+        createAchievement()
+
+        composeRule.onNodeWithText(ACHIEVEMENT_NAME).performClick()
+        // No waitUntil-settled here on purpose — that wait is exactly what blinds the other tests.
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        // Give any (incorrectly) buffered event time to reach the freshly attached collector and
+        // start a celebration, rather than asserting on a frame that is merely too early to see it.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(celebratingNodeMatcher).fetchSemanticsNodes().isEmpty()
+        }
+
+        val stillCelebrating = composeRule.onAllNodes(celebratingNodeMatcher).fetchSemanticsNodes()
+        assertTrue("celebration replayed after a mid-sequence recreation: $stillCelebrating", stillCelebrating.isEmpty())
     }
 
     @Test

@@ -14,21 +14,42 @@ import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.ui.celebration.CelebrationEvent
 import com.achievementfactory.ui.theme.MotionSpecs
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val LOAD_ERROR_MESSAGE = "Couldn't load your achievements. Restart the app to try again."
 private const val TAG = "DailyViewModel"
+
+/**
+ * Buffer depth for the two one-shot event streams below, paired with `replay = 0` and
+ * `BufferOverflow.DROP_OLDEST`.
+ *
+ * This combination — not `Channel(Channel.BUFFERED)` — is what actually makes CELEB-04 ("a
+ * celebration plays exactly once") true. A `Channel` retains up to 64 *undelivered* elements and
+ * hands every one of them to the next collector; `DailyScreen` collects under
+ * `repeatOnLifecycle(STARTED)`, so an event produced while the screen is stopped (the write lands
+ * asynchronously in `viewModelScope`, which outlives an `Activity` recreation) was buffered and
+ * then replayed after rotation — the celebration re-running on an already-completed card and the
+ * undo snackbar re-raising for a tap made before the rotation. A `MutableSharedFlow` with
+ * `replay = 0` drops an emission outright when there are no subscribers, which is the required
+ * behaviour: an event nobody was there to see never happened.
+ *
+ * The buffer only ever covers a *present but momentarily slow* collector — the undo collector
+ * suspends for the whole snackbar duration — so a burst of taps is not lost. It is never storage
+ * for a collector that has not attached yet.
+ */
+private const val EVENT_BUFFER_CAPACITY = 8
 
 /**
  * The Daily tab's ViewModel — the shape every later screen-level ViewModel in this project
@@ -55,18 +76,24 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
         .catch { emit(DailyUiState.Error(LOAD_ERROR_MESSAGE)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyUiState.Loading)
 
-    // Undo is an event, not state (PITFALLS 8/Anti-Pattern 1) — a Channel keeps no buffered
-    // history, so a snackbar never re-shows on rotation/process restoration. Never fold this
-    // token into DailyUiState.
-    private val _undoRequests = Channel<UndoToken>(Channel.BUFFERED)
-    val undoRequests: Flow<UndoToken> = _undoRequests.receiveAsFlow()
+    // Undo is an event, not state (PITFALLS 8/Anti-Pattern 1). Never fold this token into
+    // DailyUiState. See EVENT_BUFFER_CAPACITY for why this is a zero-replay SharedFlow rather than
+    // a Channel.
+    private val _undoRequests = MutableSharedFlow<UndoToken>(
+        replay = 0,
+        extraBufferCapacity = EVENT_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val undoRequests: SharedFlow<UndoToken> = _undoRequests.asSharedFlow()
 
-    // Same one-shot pattern as undoRequests (CELEB-04): a Channel keeps no buffered history, so a
-    // collector that subscribes after rotation/process restoration receives nothing, never the
-    // last-delivered event. Emitted only from the exact transition edge
-    // (IncrementOutcome.justCompleted), never derived from a state snapshot.
-    private val _celebrations = Channel<CelebrationEvent>(Channel.BUFFERED)
-    val celebrations: Flow<CelebrationEvent> = _celebrations.receiveAsFlow()
+    // Same one-shot pattern as undoRequests (CELEB-04). Emitted only from the exact transition
+    // edge (IncrementOutcome.justCompleted), never derived from a state snapshot.
+    private val _celebrations = MutableSharedFlow<CelebrationEvent>(
+        replay = 0,
+        extraBufferCapacity = EVENT_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val celebrations: SharedFlow<CelebrationEvent> = _celebrations.asSharedFlow()
 
     /**
      * Logs one tap of progress. Always +1, regardless of the achievement's target (D-02).
@@ -85,10 +112,12 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
                 .onFailure { Log.w(TAG, "increment failed for achievement id=$id", it) }
                 .getOrNull() ?: return@launch
 
-            _undoRequests.send(outcome.undoToken)
+            // tryEmit, never emit: with DROP_OLDEST it always succeeds and never suspends, so a
+            // tap can no longer wedge behind a full buffer waiting for a collector to appear.
+            _undoRequests.tryEmit(outcome.undoToken)
             if (outcome.justCompleted) {
                 holdBack(id)
-                _celebrations.send(
+                _celebrations.tryEmit(
                     CelebrationEvent.Completed(
                         achievementId = id,
                         newStreak = outcome.newStreak,
