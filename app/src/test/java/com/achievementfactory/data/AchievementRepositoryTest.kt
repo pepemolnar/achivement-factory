@@ -9,6 +9,7 @@ import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
+import com.achievementfactory.period.CurrentPeriodProvider
 import com.achievementfactory.period.PeriodEngine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -57,9 +58,9 @@ class AchievementRepositoryTest {
             reconcileStreaks = ReconcileStreaksUseCase(
                 achievementDao = database.achievementDao(),
                 progressDao = database.progressDao(),
-                periodEngine = periodEngine,
                 streakCalculator = StreakCalculator(periodEngine),
             ),
+            currentPeriodProvider = CurrentPeriodProvider(periodEngine),
         )
     }
 

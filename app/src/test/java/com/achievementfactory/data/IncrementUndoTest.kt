@@ -9,6 +9,7 @@ import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
+import com.achievementfactory.period.CurrentPeriodProvider
 import com.achievementfactory.period.PeriodEngine
 import com.achievementfactory.period.PeriodKey
 import kotlinx.coroutines.Dispatchers
@@ -62,9 +63,9 @@ class IncrementUndoTest {
             reconcileStreaks = ReconcileStreaksUseCase(
                 achievementDao = database.achievementDao(),
                 progressDao = database.progressDao(),
-                periodEngine = periodEngine,
                 streakCalculator = StreakCalculator(periodEngine),
             ),
+            currentPeriodProvider = CurrentPeriodProvider(periodEngine),
         )
     }
 

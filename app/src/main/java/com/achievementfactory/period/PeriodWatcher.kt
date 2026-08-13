@@ -1,0 +1,63 @@
+package com.achievementfactory.period
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+
+/**
+ * Notices the day changing underneath a running process (PERIOD-04, PERIOD-06): system
+ * broadcasts for a date change, a manual clock edit, and a timezone change, plus process resume,
+ * all funnel into the same [onSignal] — [CurrentPeriodProvider.refresh] followed by relaunching
+ * [ReconcileStreaksUseCase.runAll] on [applicationScope]. Three signals, one mechanism.
+ *
+ * Per D-27 there is no cross-check against a second clock source or unusual-jump heuristic
+ * anywhere here — every signal is a genuine recomputation from the trusted device clock.
+ * [ACTION_DATE_CHANGED], [ACTION_TIME_CHANGED] and [ACTION_TIMEZONE_CHANGED] are protected
+ * system broadcasts that only the OS can send; the receiver is registered at runtime with
+ * [ContextCompat.RECEIVER_NOT_EXPORTED] and declares nothing in the manifest (T-01-23).
+ */
+class PeriodWatcher(
+    private val context: Context,
+    private val currentPeriodProvider: CurrentPeriodProvider,
+    private val reconcileStreaks: ReconcileStreaksUseCase,
+    private val applicationScope: CoroutineScope,
+) {
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) = onSignal()
+    }
+
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) = onSignal()
+    }
+
+    private fun onSignal() {
+        currentPeriodProvider.refresh()
+        applicationScope.launch { reconcileStreaks.runAll(currentPeriodProvider.currentDailyKey.value) }
+    }
+
+    /** Registers the receiver and the process-lifecycle observer. Call once, at process start. */
+    fun start() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+    }
+
+    /** Unregisters both listeners — nothing is left listening once the process stops. */
+    fun stop() {
+        context.unregisterReceiver(receiver)
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+    }
+}

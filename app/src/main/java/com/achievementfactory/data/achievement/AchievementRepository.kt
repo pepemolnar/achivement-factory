@@ -7,10 +7,13 @@ import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.AppClock
+import com.achievementfactory.period.CurrentPeriodProvider
 import com.achievementfactory.period.PeriodEngine
 import com.achievementfactory.period.PeriodType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 
 /**
  * The single read/write entry point between ViewModels and the DAOs (ARCHITECTURE.md
@@ -18,74 +21,79 @@ import kotlinx.coroutines.flow.combine
  * boundary — [AchievementEntity]/[com.achievementfactory.data.progress.ProgressEntity] never
  * cross it (T-01-09).
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AchievementRepository(
     private val achievementDao: AchievementDao,
     private val progressDao: ProgressDao,
     private val periodEngine: PeriodEngine,
     private val clock: AppClock,
     private val reconcileStreaks: ReconcileStreaksUseCase,
+    private val currentPeriodProvider: CurrentPeriodProvider,
 ) {
 
     /**
-     * Reactively joins today's active daily achievements with today's progress rows. Today's
-     * period key is resolved once, in Kotlin, at the moment this flow is built — SQLite is
-     * never asked to compute what day it is (PITFALLS 1). Achievements with no progress row for
-     * today map to `count = 0, isDone = false`; `isDone` is always read from the progress row's
+     * Reactively joins the active daily achievements with the current day's progress rows.
+     * Re-subscribes to a fresh `progressDao.observeForPeriod` whenever
+     * [CurrentPeriodProvider.currentDailyKey] changes — the mechanism behind PERIOD-04: an app
+     * left open across local midnight shows yesterday's completed cards as not-done for the new
+     * day with no restart and no navigation. Achievements with no progress row for the current
+     * key map to `count = 0, isDone = false`; `isDone` is always read from the progress row's
      * snapshotted `done` column, never recomputed from the achievement's *current*
      * `counterTarget`, so a closed period's result stays immutable even if the achievement is
-     * edited later (TRACK-10, D-28).
+     * later changed (TRACK-10, D-28).
      */
-    fun observeDaily(): Flow<List<DailyAchievement>> {
-        val todayKey = periodEngine.current(PeriodType.DAILY)
-        return combine(
-            achievementDao.observeActive(PeriodType.DAILY.name),
-            progressDao.observeForPeriod(todayKey.value),
-        ) { achievements, progressRows ->
-            val progressByAchievementId = progressRows.associateBy { it.achievementId }
-            achievements.map { achievement ->
-                val progress = progressByAchievementId[achievement.id]
-                DailyAchievement(
+    fun observeDaily(): Flow<List<DailyAchievement>> =
+        currentPeriodProvider.currentDailyKey.flatMapLatest { key ->
+            combine(
+                achievementDao.observeActive(PeriodType.DAILY.name),
+                progressDao.observeForPeriod(key.value),
+            ) { achievements, progressRows ->
+                val progressByAchievementId = progressRows.associateBy { it.achievementId }
+                achievements.map { achievement ->
+                    val progress = progressByAchievementId[achievement.id]
+                    DailyAchievement(
+                        id = achievement.id,
+                        name = achievement.name,
+                        icon = achievement.icon,
+                        accent = AccentSwatch.valueOf(achievement.accentSwatch),
+                        target = achievement.counterTarget,
+                        count = progress?.count ?: 0,
+                        isDone = progress?.done ?: false,
+                        currentStreak = achievement.currentStreak,
+                        bestStreak = achievement.bestStreak,
+                    )
+                }
+            }
+        }
+
+    /**
+     * The read-only detail-screen source (TRACK-08, D-13) — the same join shape as
+     * [observeDaily] narrowed to one achievement, re-subscribing on the same
+     * [CurrentPeriodProvider.currentDailyKey] signal. Emits `null` when [id] does not resolve to
+     * a row, which [com.achievementfactory.ui.detail.AchievementDetailViewModel] maps to its
+     * `NotFound` state. This is the only read path that ever surfaces [AchievementDetail.bestStreak].
+     */
+    fun observeDetail(id: Long): Flow<AchievementDetail?> =
+        currentPeriodProvider.currentDailyKey.flatMapLatest { key ->
+            combine(
+                achievementDao.observeById(id),
+                progressDao.observeForPeriod(key.value),
+            ) { achievement, progressRows ->
+                if (achievement == null) return@combine null
+                val progress = progressRows.firstOrNull { it.achievementId == achievement.id }
+                AchievementDetail(
                     id = achievement.id,
                     name = achievement.name,
                     icon = achievement.icon,
                     accent = AccentSwatch.valueOf(achievement.accentSwatch),
                     target = achievement.counterTarget,
-                    count = progress?.count ?: 0,
+                    todayCount = progress?.count ?: 0,
                     isDone = progress?.done ?: false,
                     currentStreak = achievement.currentStreak,
                     bestStreak = achievement.bestStreak,
                 )
             }
         }
-    }
-
-    /**
-     * The read-only detail-screen source (TRACK-08, D-13) — the same join shape as
-     * [observeDaily] narrowed to one achievement, and the only read path that ever surfaces
-     * [AchievementDetail.bestStreak]. Emits `null` when [id] does not resolve to a row, which
-     * [com.achievementfactory.ui.detail.AchievementDetailViewModel] maps to its `NotFound` state.
-     */
-    fun observeDetail(id: Long): Flow<AchievementDetail?> {
-        val todayKey = periodEngine.current(PeriodType.DAILY)
-        return combine(
-            achievementDao.observeById(id),
-            progressDao.observeForPeriod(todayKey.value),
-        ) { achievement, progressRows ->
-            if (achievement == null) return@combine null
-            val progress = progressRows.firstOrNull { it.achievementId == achievement.id }
-            AchievementDetail(
-                id = achievement.id,
-                name = achievement.name,
-                icon = achievement.icon,
-                accent = AccentSwatch.valueOf(achievement.accentSwatch),
-                target = achievement.counterTarget,
-                todayCount = progress?.count ?: 0,
-                isDone = progress?.done ?: false,
-                currentStreak = achievement.currentStreak,
-                bestStreak = achievement.bestStreak,
-            )
-        }
-    }
 
     /** Creates a new daily achievement, zeroed streaks and no tiers configured. Returns its id. */
     suspend fun create(name: String, icon: String?, accent: AccentSwatch, target: Int): Long {
@@ -131,7 +139,7 @@ class AchievementRepository(
         val isDone = newCount >= target
         val previousCount = newCount - 1
         val justCompleted = isDone && previousCount < target
-        reconcileStreaks.runFor(achievementId, force = true)
+        reconcileStreaks.runFor(achievementId, todayKey, force = true)
         return IncrementOutcome(
             newCount = newCount,
             isDone = isDone,
@@ -163,7 +171,7 @@ class AchievementRepository(
             epochDay = clock.epochDay(),
         )
         val succeeded = affected > 0
-        if (succeeded) reconcileStreaks.runFor(token.achievementId, force = true)
+        if (succeeded) reconcileStreaks.runFor(token.achievementId, todayKey, force = true)
         return succeeded
     }
 }

@@ -7,7 +7,9 @@ import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
+import com.achievementfactory.period.CurrentPeriodProvider
 import com.achievementfactory.period.PeriodEngine
+import com.achievementfactory.period.PeriodWatcher
 import com.achievementfactory.period.SystemAppClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,10 +51,16 @@ class AppContainer(context: Context) {
         ReconcileStreaksUseCase(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             streakCalculator = streakCalculator,
         )
     }
+
+    /**
+     * The single source of "what day is it" for every read flow (PERIOD-04) — see
+     * [CurrentPeriodProvider]'s own doc for why no other read path may call
+     * `periodEngine.current` directly.
+     */
+    val currentPeriodProvider: CurrentPeriodProvider = CurrentPeriodProvider(periodEngine)
 
     val achievementRepository: AchievementRepository by lazy {
         AchievementRepository(
@@ -61,6 +69,21 @@ class AppContainer(context: Context) {
             periodEngine = periodEngine,
             clock = appClock,
             reconcileStreaks = reconcileStreaks,
+            currentPeriodProvider = currentPeriodProvider,
+        )
+    }
+
+    /**
+     * Started from [AchievementFactoryApp.onCreate] — refreshes [currentPeriodProvider] and
+     * reruns [reconcileStreaks] on every date/time/timezone broadcast and process resume
+     * (PERIOD-04, PERIOD-06).
+     */
+    val periodWatcher: PeriodWatcher by lazy {
+        PeriodWatcher(
+            context = context.applicationContext,
+            currentPeriodProvider = currentPeriodProvider,
+            reconcileStreaks = reconcileStreaks,
+            applicationScope = applicationScope,
         )
     }
 }

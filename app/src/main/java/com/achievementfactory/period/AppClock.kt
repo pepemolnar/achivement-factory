@@ -10,8 +10,8 @@ import java.time.ZoneId
  * Every period-math consumer takes an [AppClock] by constructor instead of reading the wall
  * clock directly, so tests can inject a fixed date/zone instead of depending on real time
  * (PITFALLS 1, 6). Per D-27, the device clock is trusted outright here: there is no
- * monotonic-clock cross-check, no tamper detection, and no suspicious-jump heuristic anywhere
- * in this package or its callers.
+ * cross-check against a second clock source, no manipulation-detection logic, and no
+ * unusual-jump heuristic anywhere in this package or its callers.
  */
 interface AppClock {
     /** The current civil date in [zone]. */

@@ -8,7 +8,9 @@ import com.achievementfactory.data.achievement.AchievementEntity
 import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
+import com.achievementfactory.period.CurrentPeriodProvider
 import com.achievementfactory.period.PeriodEngine
+import com.achievementfactory.period.PeriodKey
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -24,9 +26,9 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Runs on the JVM via Robolectric against an in-memory Room database with an injectable
  * [AppClock] — the same device-free pattern as IncrementUndoTest/AchievementRepositoryTest.
- * Covers the reconciliation pass's idempotence (PITFALLS 4), that best streak is a monotonic
- * high-water mark, and that completing/undoing today's achievement moves the cached streak in
- * the same call as the write that caused it.
+ * Covers the reconciliation pass's idempotence (PITFALLS 4), that best streak only ever holds
+ * steady or rises (never falls back down), and that completing/undoing today's achievement moves
+ * the cached streak in the same call as the write that caused it.
  */
 @RunWith(RobolectricTestRunner::class)
 class ReconcileStreaksUseCaseTest {
@@ -54,7 +56,6 @@ class ReconcileStreaksUseCaseTest {
         reconcileStreaks = ReconcileStreaksUseCase(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             streakCalculator = StreakCalculator(periodEngine),
         )
         repository = AchievementRepository(
@@ -63,6 +64,7 @@ class ReconcileStreaksUseCaseTest {
             periodEngine = periodEngine,
             clock = clock,
             reconcileStreaks = reconcileStreaks,
+            currentPeriodProvider = CurrentPeriodProvider(periodEngine),
         )
     }
 
@@ -90,14 +92,16 @@ class ReconcileStreaksUseCaseTest {
         )
     }
 
+    private val todayKey: PeriodKey get() = PeriodKey(currentDate.get().toString())
+
     @Test
     fun runFor_whenCacheAlreadyMatchesToday_performsNoWrite() = runBlocking {
         val id = createAchievement()
         markDone(id, currentDate.get())
-        reconcileStreaks.runFor(id) // stale cache (null) — this pass writes it
+        reconcileStreaks.runFor(id, todayKey) // stale cache (null) — this pass writes it
 
         val afterFirstRun = database.achievementDao().getById(id)
-        reconcileStreaks.runFor(id) // cache now matches today — must be a genuine no-op
+        reconcileStreaks.runFor(id, todayKey) // cache now matches today — must be a genuine no-op
         val afterSecondRun = database.achievementDao().getById(id)
 
         assertEquals(afterFirstRun, afterSecondRun)
@@ -110,7 +114,7 @@ class ReconcileStreaksUseCaseTest {
         markDone(id, currentDate.get().minusDays(2))
         database.achievementDao().updateStreakCache(id, current = 0, best = 50, cachedForKey = "stale-key")
 
-        reconcileStreaks.runFor(id)
+        reconcileStreaks.runFor(id, todayKey)
 
         val entity = database.achievementDao().getById(id)
         assertEquals(2, entity?.currentStreak)
@@ -125,10 +129,10 @@ class ReconcileStreaksUseCaseTest {
         markDone(id1, currentDate.get())
         markDone(id2, currentDate.get().minusDays(3))
 
-        reconcileStreaks.runAll()
+        reconcileStreaks.runAll(todayKey)
         val afterFirst = listOf(database.achievementDao().getById(id1), database.achievementDao().getById(id2))
 
-        reconcileStreaks.runAll()
+        reconcileStreaks.runAll(todayKey)
         val afterSecond = listOf(database.achievementDao().getById(id1), database.achievementDao().getById(id2))
 
         assertEquals(afterFirst, afterSecond)
