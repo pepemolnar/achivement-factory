@@ -31,10 +31,18 @@ interface AchievementDao {
      * Ids of achievements whose cached streak was not last computed for [currentKey] — the set
      * [ReconcileStreaksUseCase.runAll] actually needs to touch, rather than rewriting every row
      * on every app open.
+     *
+     * Filtered by [periodType] because [currentKey] only means anything relative to one: a
+     * Monday-anchored weekly key and a calendar-day daily key are not comparable, so selecting
+     * rows of a different recurrence unit would hand the calculator a key from the wrong
+     * dimension. Filtered by `archived = 0` because an archived achievement is not accruing a
+     * streak and rewriting its cache on every pass is pure churn.
      */
     @Query(
         """SELECT id FROM achievements
-           WHERE streakCachedForPeriodKey IS NULL OR streakCachedForPeriodKey != :currentKey"""
+           WHERE periodType = :periodType
+             AND archived = 0
+             AND (streakCachedForPeriodKey IS NULL OR streakCachedForPeriodKey != :currentKey)"""
     )
-    suspend fun staleAchievementIds(currentKey: String): List<Long>
+    suspend fun staleAchievementIds(currentKey: String, periodType: String): List<Long>
 }

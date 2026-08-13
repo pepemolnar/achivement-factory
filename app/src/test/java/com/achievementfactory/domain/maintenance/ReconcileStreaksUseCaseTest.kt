@@ -14,6 +14,7 @@ import com.achievementfactory.period.PeriodKey
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -135,6 +136,42 @@ class ReconcileStreaksUseCaseTest {
         val afterSecond = listOf(database.achievementDao().getById(id1), database.achievementDao().getById(id2))
 
         assertEquals(afterFirst, afterSecond)
+    }
+
+    @Test
+    fun runAll_leavesArchivedAchievementsAlone() = runBlocking {
+        val active = createAchievement()
+        val archived = createAchievement()
+        database.openHelper.writableDatabase.execSQL("UPDATE achievements SET archived = 1 WHERE id = $archived")
+        markDone(active, currentDate.get())
+        markDone(archived, currentDate.get())
+
+        reconcileStreaks.runAll(todayKey)
+
+        assertEquals(1, database.achievementDao().getById(active)?.currentStreak)
+        // An archived achievement is not accruing a streak; rewriting its cache on every pass is
+        // pure churn, so it must not be selected at all.
+        assertNull(database.achievementDao().getById(archived)?.streakCachedForPeriodKey)
+    }
+
+    /**
+     * WEEKLY/MONTHLY period math is already implemented and Phase 2 turns it on in the UI. Before
+     * this guard, `runFor` loaded the entity and then discarded its `periodType`, passing DAILY
+     * unconditionally — so a weekly achievement would have had its Monday-anchored key walked one
+     * *day* at a time and its streak pinned at 1 forever, silently and with a plausible number.
+     * Skipping is the safe failure: a visibly stale cache, never a confidently wrong streak.
+     */
+    @Test
+    fun runFor_withAnAchievementWhosePeriodTypeDoesNotMatchTheKey_writesNothing() = runBlocking {
+        val id = createAchievement()
+        database.openHelper.writableDatabase.execSQL("UPDATE achievements SET periodType = 'WEEKLY' WHERE id = $id")
+        markDone(id, currentDate.get())
+
+        reconcileStreaks.runFor(id, todayKey, force = true)
+
+        val entity = database.achievementDao().getById(id)
+        assertEquals(0, entity?.currentStreak)
+        assertNull(entity?.streakCachedForPeriodKey)
     }
 
     @Test

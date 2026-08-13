@@ -18,10 +18,11 @@ import com.achievementfactory.period.PeriodType
  * `currentPeriodProvider.currentDailyKey.value` (or, on the write path, the same `todayKey`
  * they already resolved for their own SQL write).
  *
- * [runAll] runs once at app open (T-01-21's bounded walk, off the main thread on
- * `applicationScope`) and again on every [com.achievementfactory.period.PeriodWatcher] signal,
- * selecting only the achievements [AchievementDao.staleAchievementIds] reports as behind
- * [currentKey] — not a rewrite of every row on every pass. [runFor]'s own
+ * [runAll] runs at app open and on every [com.achievementfactory.period.PeriodWatcher] signal —
+ * both are the same `onStart`/broadcast path (T-01-21's bounded walk, off the main thread on
+ * `applicationScope`) — selecting only the active achievements of the matching recurrence unit
+ * that [AchievementDao.staleAchievementIds] reports as behind
+ * `currentKey` — not a rewrite of every row on every pass. [runFor]'s own
  * `streakCachedForPeriodKey == currentKey` guard then makes that pass a genuine no-op for any
  * achievement it did not need to touch, which is what keeps running it twice in a row
  * byte-identical to running it once.
@@ -41,15 +42,38 @@ class ReconcileStreaksUseCase(
     private val streakCalculator: StreakCalculator,
 ) {
 
-    suspend fun runFor(achievementId: Long, currentKey: PeriodKey, force: Boolean = false) {
+    /**
+     * Recomputes one achievement's cached streak. [currentKey] must be a key of [keyPeriodType]'s
+     * recurrence unit — every call site today resolves it from
+     * [com.achievementfactory.period.CurrentPeriodProvider.currentDailyKey], hence the default.
+     *
+     * An achievement whose own `periodType` does not match [keyPeriodType] is skipped without
+     * being written. That guard is the point: the row's period type used to be discarded
+     * entirely and [PeriodType.DAILY] passed unconditionally, so the moment Phase 2 turns on
+     * WEEKLY/MONTHLY this would have walked Monday-anchored keys one *day* at a time and pinned
+     * every weekly streak at 1 forever, silently and with a plausible-looking number. Leaving the
+     * cache visibly stale is a much better failure than writing a confidently wrong streak.
+     * Phase 2 must resolve a `currentKey` per recurrence unit and call this once per unit.
+     */
+    suspend fun runFor(
+        achievementId: Long,
+        currentKey: PeriodKey,
+        force: Boolean = false,
+        keyPeriodType: PeriodType = PeriodType.DAILY,
+    ) {
         val achievement = achievementDao.getById(achievementId) ?: return
         if (!force && achievement.streakCachedForPeriodKey == currentKey.value) return
+
+        // Tolerant of an unrecognized stored value (a hand-edited row, a renamed enum constant)
+        // for the same reason: skip rather than throw out of a maintenance pass.
+        val periodType = PeriodType.entries.firstOrNull { it.name == achievement.periodType }
+        if (periodType != keyPeriodType) return
 
         val doneKeys = progressDao.doneKeysFor(achievementId).toSet()
         val snapshot = streakCalculator.calculate(
             doneKeys = doneKeys,
             currentKey = currentKey,
-            periodType = PeriodType.DAILY,
+            periodType = periodType,
             storedBest = achievement.bestStreak,
         )
         achievementDao.updateStreakCache(
@@ -60,7 +84,8 @@ class ReconcileStreaksUseCase(
         )
     }
 
-    suspend fun runAll(currentKey: PeriodKey) {
-        achievementDao.staleAchievementIds(currentKey.value).forEach { runFor(it, currentKey) }
+    suspend fun runAll(currentKey: PeriodKey, keyPeriodType: PeriodType = PeriodType.DAILY) {
+        achievementDao.staleAchievementIds(currentKey.value, keyPeriodType.name)
+            .forEach { runFor(it, currentKey, keyPeriodType = keyPeriodType) }
     }
 }
