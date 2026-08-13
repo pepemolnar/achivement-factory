@@ -26,4 +26,15 @@ interface AchievementDao {
            WHERE id = :id"""
     )
     suspend fun updateStreakCache(id: Long, current: Int, best: Int, cachedForKey: String)
+
+    /**
+     * Ids of achievements whose cached streak was not last computed for [currentKey] — the set
+     * [ReconcileStreaksUseCase.runAll] actually needs to touch, rather than rewriting every row
+     * on every app open.
+     */
+    @Query(
+        """SELECT id FROM achievements
+           WHERE streakCachedForPeriodKey IS NULL OR streakCachedForPeriodKey != :currentKey"""
+    )
+    suspend fun staleAchievementIds(currentKey: String): List<Long>
 }

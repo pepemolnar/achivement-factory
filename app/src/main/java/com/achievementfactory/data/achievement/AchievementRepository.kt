@@ -1,6 +1,7 @@
 package com.achievementfactory.data.achievement
 
 import com.achievementfactory.data.progress.ProgressDao
+import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
@@ -21,6 +22,7 @@ class AchievementRepository(
     private val progressDao: ProgressDao,
     private val periodEngine: PeriodEngine,
     private val clock: AppClock,
+    private val reconcileStreaks: ReconcileStreaksUseCase,
 ) {
 
     /**
@@ -87,6 +89,10 @@ class AchievementRepository(
      * [IncrementOutcome.justCompleted] is derived from [IncrementOutcome.newCount] alone
      * (`previousCount = newCount - 1`) rather than from a separate "before" read, so there is no
      * second read that could race a concurrent increment and report the wrong transition.
+     *
+     * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) immediately
+     * after the counter write, so the streak the UI reads on the next `observeDaily` emission is
+     * already correct — the tap and the streak tick-up are the same interaction (TRACK-06).
      */
     suspend fun increment(achievementId: Long): IncrementOutcome {
         val target = achievementDao.getById(achievementId)?.counterTarget
@@ -96,6 +102,7 @@ class AchievementRepository(
         val isDone = newCount >= target
         val previousCount = newCount - 1
         val justCompleted = isDone && previousCount < target
+        reconcileStreaks.runFor(achievementId, force = true)
         return IncrementOutcome(
             newCount = newCount,
             isDone = isDone,
@@ -111,6 +118,9 @@ class AchievementRepository(
      * refused rather than applied to a new day (T-01-16). This, combined with [increment] never
      * naming any period other than today, is the whole mechanism behind D-28: a backward clock
      * move cannot reopen a day that isn't the one the trusted clock currently reports as today.
+     *
+     * On a successful reversal, [reconcileStreaks] runs (forced, same as [increment]) so a
+     * streak earned by the increment this undo reverses drops back down in the same call.
      */
     suspend fun undo(token: UndoToken): Boolean {
         val todayKey = periodEngine.current(PeriodType.DAILY)
@@ -123,6 +133,8 @@ class AchievementRepository(
             target = target,
             epochDay = clock.epochDay(),
         )
-        return affected > 0
+        val succeeded = affected > 0
+        if (succeeded) reconcileStreaks.runFor(token.achievementId, force = true)
+        return succeeded
     }
 }

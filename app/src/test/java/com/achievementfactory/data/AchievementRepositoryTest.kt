@@ -6,6 +6,8 @@ import app.cash.turbine.test
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementEntity
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
+import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
 import com.achievementfactory.period.PeriodEngine
 import kotlinx.coroutines.flow.first
@@ -46,11 +48,18 @@ class AchievementRepositoryTest {
             AppDatabase::class.java,
         ).allowMainThreadQueries().build()
 
+        val periodEngine = PeriodEngine(clock)
         repository = AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = PeriodEngine(clock),
+            periodEngine = periodEngine,
             clock = clock,
+            reconcileStreaks = ReconcileStreaksUseCase(
+                achievementDao = database.achievementDao(),
+                progressDao = database.progressDao(),
+                periodEngine = periodEngine,
+                streakCalculator = StreakCalculator(periodEngine),
+            ),
         )
     }
 

@@ -5,7 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementEntity
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
 import com.achievementfactory.period.PeriodEngine
 import com.achievementfactory.period.PeriodKey
@@ -51,11 +53,18 @@ class IncrementUndoTest {
             AppDatabase::class.java,
         ).allowMainThreadQueries().build()
 
+        val periodEngine = PeriodEngine(clock)
         repository = AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = PeriodEngine(clock),
+            periodEngine = periodEngine,
             clock = clock,
+            reconcileStreaks = ReconcileStreaksUseCase(
+                achievementDao = database.achievementDao(),
+                progressDao = database.progressDao(),
+                periodEngine = periodEngine,
+                streakCalculator = StreakCalculator(periodEngine),
+            ),
         )
     }
 
