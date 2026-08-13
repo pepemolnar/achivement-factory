@@ -65,6 +65,7 @@ class AppContainer(context: Context) {
 
     val achievementRepository: AchievementRepository by lazy {
         AchievementRepository(
+            database = database,
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
             clock = appClock,

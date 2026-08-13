@@ -60,6 +60,7 @@ class ReconcileStreaksUseCaseTest {
             streakCalculator = StreakCalculator(periodEngine),
         )
         repository = AchievementRepository(
+            database = database,
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
             clock = clock,

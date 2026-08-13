@@ -54,6 +54,7 @@ class RolloverTest {
         val periodEngine = PeriodEngine(clock)
         currentPeriodProvider = CurrentPeriodProvider(periodEngine)
         repository = AchievementRepository(
+            database = database,
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
             clock = clock,

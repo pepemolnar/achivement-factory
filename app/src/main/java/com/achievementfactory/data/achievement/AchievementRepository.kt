@@ -1,5 +1,7 @@
 package com.achievementfactory.data.achievement
 
+import androidx.room.withTransaction
+import com.achievementfactory.data.AppDatabase
 import com.achievementfactory.data.progress.ProgressDao
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.model.AchievementDetail
@@ -23,6 +25,10 @@ import kotlinx.coroutines.flow.flatMapLatest
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AchievementRepository(
+    // The repository owns transaction boundaries (CONVENTIONS.md "Repository and layering rules"),
+    // so it needs the database itself and not only its DAOs: a multi-step write that spans two
+    // DAOs cannot be made atomic from inside either one.
+    private val database: AppDatabase,
     private val achievementDao: AchievementDao,
     private val progressDao: ProgressDao,
     private val clock: AppClock,
@@ -126,9 +132,17 @@ class AchievementRepository(
      * (`previousCount = newCount - 1`) rather than from a separate "before" read, so there is no
      * second read that could race a concurrent increment and report the wrong transition.
      *
-     * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) immediately
-     * after the counter write, so the streak the UI reads on the next `observeDaily` emission is
-     * already correct — the tap and the streak tick-up are the same interaction (TRACK-06).
+     * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) inside the same
+     * transaction as the counter write, so the streak the UI reads on the next `observeDaily`
+     * emission is already correct — the tap and the streak tick-up are the same interaction
+     * (TRACK-06) and, because they commit together, process death between them cannot leave
+     * `streakCachedForPeriodKey` stamped with a value the completion log no longer supports.
+     *
+     * What [IncrementOutcome.newStreak] guarantees, precisely: it is a value read after this
+     * call's own reconcile, inside this call's own transaction. It is *not* guaranteed to be
+     * unaffected by a concurrent tap on the same achievement — the second transaction's reconcile
+     * recomputes from the same log and both arrive at the same number, so the value is correct,
+     * but it is a post-commit read rather than a snapshot owned exclusively by this call.
      *
      * Returns `null` — without touching any row — when [achievementId] no longer resolves to an
      * achievement. A row that was deleted between the frame the card rendered on and the tap
@@ -137,24 +151,26 @@ class AchievementRepository(
      * the process down from inside a `viewModelScope` coroutine.
      */
     suspend fun increment(achievementId: Long): IncrementOutcome? {
-        val target = achievementDao.getById(achievementId)?.counterTarget ?: return null
+        // Resolved before the transaction opens: refresh() assigns a StateFlow that read flows are
+        // subscribed to, and firing that while holding a write transaction would have collectors
+        // querying a database they cannot read from yet.
         val todayKey = resolveTodayKeyForWrite()
-        val newCount = progressDao.incrementAndRead(achievementId, todayKey.value, target, clock.epochDay())
-        val isDone = newCount >= target
-        val previousCount = newCount - 1
-        val justCompleted = isDone && previousCount < target
-        reconcileStreaks.runFor(achievementId, todayKey, force = true)
-        // Read back the freshly-reconciled streak so IncrementOutcome.newStreak is always this
-        // call's own true post-write value — never a separately-collected DailyUiState snapshot
-        // that could still be racing the same write.
-        val newStreak = achievementDao.getById(achievementId)?.currentStreak ?: 0
-        return IncrementOutcome(
-            newCount = newCount,
-            isDone = isDone,
-            justCompleted = justCompleted,
-            newStreak = newStreak,
-            undoToken = UndoToken(achievementId, todayKey, newCount),
-        )
+        return database.withTransaction<IncrementOutcome?> {
+            val target = achievementDao.getById(achievementId)?.counterTarget ?: return@withTransaction null
+            val newCount = progressDao.incrementAndRead(achievementId, todayKey.value, target, clock.epochDay())
+            val isDone = newCount >= target
+            val previousCount = newCount - 1
+            val justCompleted = isDone && previousCount < target
+            reconcileStreaks.runFor(achievementId, todayKey, force = true)
+            val newStreak = achievementDao.getById(achievementId)?.currentStreak ?: 0
+            IncrementOutcome(
+                newCount = newCount,
+                isDone = isDone,
+                justCompleted = justCompleted,
+                newStreak = newStreak,
+                undoToken = UndoToken(achievementId, todayKey, newCount),
+            )
+        }
     }
 
     /**
@@ -165,23 +181,27 @@ class AchievementRepository(
      * naming any period other than today, is the whole mechanism behind D-28: a backward clock
      * move cannot reopen a day that isn't the one the trusted clock currently reports as today.
      *
-     * On a successful reversal, [reconcileStreaks] runs (forced, same as [increment]) so a
-     * streak earned by the increment this undo reverses drops back down in the same call.
+     * On a successful reversal, [reconcileStreaks] runs (forced, same as [increment]) inside the
+     * same transaction as the compare-and-set, so the counter and the cached streak can never be
+     * left disagreeing by a crash between the two.
      */
     suspend fun undo(token: UndoToken): Boolean {
         val todayKey = resolveTodayKeyForWrite()
         if (token.periodKey != todayKey) return false
-        val target = achievementDao.getById(token.achievementId)?.counterTarget ?: return false
-        val affected = progressDao.undoIfUnchanged(
-            achievementId = token.achievementId,
-            periodKey = todayKey.value,
-            expectedCount = token.expectedCount,
-            target = target,
-            epochDay = clock.epochDay(),
-        )
-        val succeeded = affected > 0
-        if (succeeded) reconcileStreaks.runFor(token.achievementId, todayKey, force = true)
-        return succeeded
+        return database.withTransaction {
+            val target = achievementDao.getById(token.achievementId)?.counterTarget
+                ?: return@withTransaction false
+            val affected = progressDao.undoIfUnchanged(
+                achievementId = token.achievementId,
+                periodKey = todayKey.value,
+                expectedCount = token.expectedCount,
+                target = target,
+                epochDay = clock.epochDay(),
+            )
+            val succeeded = affected > 0
+            if (succeeded) reconcileStreaks.runFor(token.achievementId, todayKey, force = true)
+            succeeded
+        }
     }
 
     /**

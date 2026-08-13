@@ -51,6 +51,7 @@ class AchievementRepositoryTest {
 
         val periodEngine = PeriodEngine(clock)
         repository = AchievementRepository(
+            database = database,
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
             clock = clock,
