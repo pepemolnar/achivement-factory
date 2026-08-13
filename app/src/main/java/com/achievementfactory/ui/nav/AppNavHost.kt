@@ -29,7 +29,16 @@ fun AppNavHost(navController: NavHostController) {
         composable(Routes.DAILY) {
             val viewModel: DailyViewModel = viewModel(factory = DailyViewModel.Factory)
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-            DailyScreen(uiState = uiState, onCreateClick = { navController.navigate(Routes.CREATE) })
+            DailyScreen(
+                uiState = uiState,
+                onCreateClick = { navController.navigate(Routes.CREATE) },
+                onIncrement = viewModel::onIncrement,
+                // Long-press opens the detail screen (D-03) — that route is added in plan 01-06;
+                // wiring it there is a one-line change since this parameter already exists.
+                onLongPress = {},
+                undoRequests = viewModel.undoRequests,
+                onUndo = viewModel::onUndo,
+            )
         }
         composable(Routes.CREATE) {
             val viewModel: CreateAchievementViewModel = viewModel(factory = CreateAchievementViewModel.Factory)

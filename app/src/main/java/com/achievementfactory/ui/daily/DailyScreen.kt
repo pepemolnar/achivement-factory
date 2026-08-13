@@ -17,27 +17,63 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.ui.achievement.AchievementCard
 import com.achievementfactory.ui.theme.Spacing
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The Daily tab (NAV-04, TRACK-02, D-05): renders live Room data as neutral cards, groups
  * completed items under a Done divider, and shows the two-line empty state when there is
  * nothing to show. [onCreateClick] navigates to the creation screen (wired in `AppNavHost`).
+ * [onIncrement]/[onLongPress] forward the whole-card tap/long-press gestures (D-01–D-03).
+ * [undoRequests] is a one-shot event stream, not state (PITFALLS 8) — each emission raises the
+ * undo snackbar exactly once, never replayed on rotation/process restoration.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DailyScreen(
     uiState: DailyUiState,
     onCreateClick: () -> Unit,
+    onIncrement: (Long) -> Unit,
+    onLongPress: (Long) -> Unit,
+    undoRequests: Flow<UndoToken>,
+    onUndo: (UndoToken) -> Unit,
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(undoRequests, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            undoRequests.collect { token ->
+                val result = snackbarHostState.showSnackbar(
+                    message = "Progress updated",
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    onUndo(token)
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(text = "Daily", style = MaterialTheme.typography.headlineSmall) })
@@ -47,6 +83,7 @@ fun DailyScreen(
                 Icon(imageVector = Icons.Filled.Add, contentDescription = "Add achievement")
             }
         },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { innerPadding ->
         when (uiState) {
             is DailyUiState.Loading -> LoadingBody(innerPadding)
@@ -54,7 +91,7 @@ fun DailyScreen(
             is DailyUiState.Content -> if (uiState.isEmpty) {
                 EmptyBody(innerPadding)
             } else {
-                DailyList(innerPadding, uiState)
+                DailyList(innerPadding, uiState, onIncrement, onLongPress)
             }
         }
     }
@@ -107,7 +144,12 @@ private fun EmptyBody(innerPadding: PaddingValues) {
 }
 
 @Composable
-private fun DailyList(innerPadding: PaddingValues, content: DailyUiState.Content) {
+private fun DailyList(
+    innerPadding: PaddingValues,
+    content: DailyUiState.Content,
+    onIncrement: (Long) -> Unit,
+    onLongPress: (Long) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -119,7 +161,11 @@ private fun DailyList(innerPadding: PaddingValues, content: DailyUiState.Content
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         items(content.outstanding, key = { it.id }) { achievement ->
-            AchievementCard(achievement = achievement)
+            AchievementCard(
+                achievement = achievement,
+                onIncrement = { onIncrement(achievement.id) },
+                onLongPress = { onLongPress(achievement.id) },
+            )
         }
 
         if (content.done.isNotEmpty()) {
@@ -127,7 +173,11 @@ private fun DailyList(innerPadding: PaddingValues, content: DailyUiState.Content
                 DoneSectionHeader()
             }
             items(content.done, key = { it.id }) { achievement ->
-                AchievementCard(achievement = achievement)
+                AchievementCard(
+                    achievement = achievement,
+                    onIncrement = { onIncrement(achievement.id) },
+                    onLongPress = { onLongPress(achievement.id) },
+                )
             }
         }
     }

@@ -4,6 +4,10 @@ import app.cash.turbine.test
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.model.DailyAchievement
+import com.achievementfactory.domain.model.IncrementOutcome
+import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.period.PeriodKey
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -97,5 +102,41 @@ class DailyViewModelTest {
             )
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun onIncrement_emitsExactlyOneUndoTokenPerCall() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDaily() } returns flowOf(emptyList())
+        val expectedToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1)
+        coEvery { repository.increment(1L) } returns IncrementOutcome(
+            newCount = 1,
+            isDone = true,
+            justCompleted = true,
+            undoToken = expectedToken,
+        )
+
+        val viewModel = DailyViewModel(repository)
+
+        viewModel.undoRequests.test {
+            viewModel.onIncrement(1L)
+            assertEquals(expectedToken, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun contentPartition_achievementWhoseIdIsHeldBack_staysOutstandingDespiteBeingDone() {
+        val heldBackDone = achievement(id = 1, isDone = true)
+        val ordinaryDone = achievement(id = 2, isDone = true)
+
+        val content = DailyUiState.Content.partition(
+            achievements = listOf(heldBackDone, ordinaryDone),
+            heldBackIds = setOf(1L),
+        )
+
+        assertEquals(listOf(heldBackDone), content.outstanding)
+        assertEquals(listOf(ordinaryDone), content.done)
+        assertTrue(content.heldBackIds.contains(1L))
     }
 }

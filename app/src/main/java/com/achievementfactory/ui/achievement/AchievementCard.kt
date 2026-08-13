@@ -1,6 +1,9 @@
 package com.achievementfactory.ui.achievement
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,8 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,13 +30,20 @@ import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.color
 
 /**
- * Resting card anatomy (D-01, D-07–D-11): neutral body, accent-only icon/ring cluster, name in
- * the Body role. No streak badge in this plan — every achievement starts at streak 0, and that
- * indicator arrives, hidden-at-zero, in plan 01-05.
+ * Resting + completed card anatomy (D-01, D-02, D-07–D-11): neutral body, accent-only icon/ring
+ * cluster, name in the Body role. The whole card is the tap target — no dedicated check button,
+ * no stepper, no swipe gesture, so one tap is always exactly +1 regardless of the achievement's
+ * target. [onLongPress] opens the detail screen; it is a no-op at every call site in this plan
+ * and wired to real navigation in plan 01-06 (D-03) — the parameter exists now so that wiring is
+ * a one-line change then, not a signature change. No streak badge in this plan — every
+ * achievement starts at streak 0, and that indicator arrives, hidden-at-zero, in plan 01-05.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AchievementCard(
     achievement: DailyAchievement,
+    onIncrement: () -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val accentColor = achievement.accent.color()
@@ -43,7 +56,8 @@ fun AchievementCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = Spacing.cardMinHeight),
+            .heightIn(min = Spacing.cardMinHeight)
+            .combinedClickable(onClick = onIncrement, onLongClick = onLongPress),
         shape = RoundedCornerShape(Spacing.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -55,15 +69,39 @@ fun AchievementCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                ProgressRing(progress = progress.coerceIn(0f, 1f), accent = accentColor)
-                AchievementGlyph(icon = achievement.icon, name = achievement.name, accent = accentColor)
+                ProgressRing(
+                    progress = progress.coerceIn(0f, 1f),
+                    accent = accentColor,
+                    closed = achievement.isDone,
+                )
+                if (achievement.isDone) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Completed",
+                        tint = accentColor,
+                        modifier = Modifier.size(Spacing.iconClusterSize),
+                    )
+                } else {
+                    AchievementGlyph(icon = achievement.icon, name = achievement.name, accent = accentColor)
+                }
             }
             Spacer(modifier = Modifier.width(Spacing.sm))
-            Text(
-                text = achievement.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Column {
+                Text(
+                    text = achievement.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                // Target-1 achievements read as a boolean tick, not a quota (PITFALLS "UX
+                // Pitfalls") — no fraction is ever shown for them, on either resting or done cards.
+                if (achievement.target > 1) {
+                    Text(
+                        text = "${achievement.count}/${achievement.target}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
