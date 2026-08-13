@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.achievementfactory.data.achievement.AccentSwatch
+import com.achievementfactory.period.PeriodType
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -60,7 +62,7 @@ class MigrationTest {
                      silverThreshold, goldThreshold, archived, createdAtEpochDay, currentStreak,
                      bestStreak, streakCachedForPeriodKey)
                 VALUES
-                    (1, 'Read 10 pages', 'DAILY', NULL, 'BLUE', 1, NULL, NULL, NULL, 0,
+                    (1, 'Read 10 pages', 'DAILY', NULL, 'SKY', 1, NULL, NULL, NULL, 0,
                      $createdAtEpochDay, 3, 5, '2026-08-12')
                 """.trimIndent(),
             )
@@ -86,6 +88,23 @@ class MigrationTest {
             assertEquals(3, achievement?.currentStreak)
             assertEquals(5, achievement?.bestStreak)
             assertEquals("2026-08-12", achievement?.streakCachedForPeriodKey)
+
+            // The fixture must stay a row the *application* could actually have written. It used
+            // to seed accentSwatch = 'BLUE', which is not an AccentSwatch member at all (the ten
+            // are RED/ORANGE/AMBER/LIME/EMERALD/TEAL/SKY/INDIGO/VIOLET/PINK) — the test only
+            // passed because it reads through the DAO and never through the mapping layer, where
+            // an unrecognized name is silently replaced by a fallback swatch. A migration test
+            // whose fixture is not a realistic row proves nothing about realistic rows surviving,
+            // which is the entire property this file exists to assert. This assertion is what
+            // keeps the fixture honest as the enum evolves.
+            assertTrue(
+                "fixture accentSwatch '${achievement?.accentSwatch}' is not an AccentSwatch member",
+                AccentSwatch.entries.any { it.name == achievement?.accentSwatch },
+            )
+            assertTrue(
+                "fixture periodType '${achievement?.periodType}' is not a PeriodType member",
+                PeriodType.entries.any { it.name == achievement?.periodType },
+            )
 
             val progress = reopened.progressDao().getFor(achievementId = 1, periodKey = "2026-08-13")
             assertNotNull("progress row did not survive close/reopen", progress)
