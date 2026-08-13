@@ -95,6 +95,8 @@ A personal Android app for tracking recurring achievements and one-off todos acr
 
 ## Context
 
+**Current state.** Phase 1 complete (2026-08-13) — daily achievements build, install-ready, and pass 81 unit tests: period engine, Room schema v1 with export and migration harness, create form, atomic increment/undo, log-derived streaks, detail screen, rollover watcher, and the completion celebration. Nothing has moved to Validated below, because the app has not yet run on the owner's phone: no device was attached during execution, so every on-device check and both instrumented test suites are still outstanding, and the phase 1 code review left 4 Critical findings open.
+
 **Origin.** The owner wants a personal habit and achievement tracker that makes consistency feel rewarding rather than merely recorded. The animation and the streak are not decoration — they are the product.
 
 **Domain model, as settled during questioning:**
@@ -160,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-27 after initialization*
+*Last updated: 2026-08-13 after Phase 1 execution*
