@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 
 /**
  * Guards DATA-03: if `APP_DATABASE_VERSION` is ever bumped without a matching schema export
@@ -80,16 +81,28 @@ class SchemaExportTest {
         return versionMatch.groupValues[1].toInt()
     }
 
-    private fun isTrackedByGit(file: File): Boolean = try {
-        val process = ProcessBuilder("git", "ls-files", "--error-unmatch", file.name)
-            .directory(file.parentFile)
-            .redirectErrorStream(true)
-            .start()
-        process.waitFor() == 0
-    } catch (_: Exception) {
-        // No git binary on PATH (e.g. an unusual CI image) — don't fail the whole suite over an
-        // environment gap unrelated to schema-export correctness; the existence/version checks
-        // above still run.
-        true
+    /**
+     * A guard that silently passes is not a guard, so exactly one failure mode is excused here:
+     * [IOException] from [ProcessBuilder.start], which is what "there is no git binary on PATH"
+     * actually looks like. Everything else — git present but failing, a `SecurityException` from
+     * the process spawn, an interrupted wait — is a real answer of "not tracked" and must fail the
+     * test. Catching bare [Exception] made every one of those vacuously pass.
+     *
+     * The output stream is drained before [Process.waitFor] on purpose: with
+     * `redirectErrorStream(true)` and an undrained pipe, a git error message larger than the pipe
+     * buffer blocks the child process forever and hangs the test until the JUnit timeout.
+     */
+    private fun isTrackedByGit(file: File): Boolean {
+        val process = try {
+            ProcessBuilder("git", "ls-files", "--error-unmatch", file.name)
+                .directory(file.parentFile)
+                .redirectErrorStream(true)
+                .start()
+        } catch (_: IOException) {
+            return true
+        }
+
+        process.inputStream.bufferedReader().use { it.readText() }
+        return process.waitFor() == 0
     }
 }
