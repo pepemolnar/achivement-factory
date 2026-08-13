@@ -1,9 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    No permission of any kind is declared here, and android.permission.INTERNET in particular must
+    never be added: its absence is an OS-enforced guarantee that this app cannot make a network
+    call even if a bug tried to.
+
+    allowBackup="false" disables cloud backup; dataExtractionRules is what additionally blocks
+    device-to-device transfer on Android 12+, which allowBackup does not cover.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:name=".AchievementFactoryApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.AchievementFactory">

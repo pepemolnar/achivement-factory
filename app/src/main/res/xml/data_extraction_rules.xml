@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The product boundary is "everything lives in local storage on one device — no account, no
+    network, no sync", and docs/RELEASE.md treats it as absolute ("there is no cloud restore path
+    if the local database is ever wiped").
+
+    android:allowBackup="false" alone does not deliver that on Android 12+ (this app targets 36):
+    it disables cloud backup, but device-to-device transfer is governed separately by these rules.
+    Without this file the Room database would be copied to a new phone during setup transfer,
+    quietly reinstating exactly the sync path the product says does not exist.
+
+    Every domain is excluded from both channels. There is nothing in this app worth transferring
+    off the device it was created on.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
