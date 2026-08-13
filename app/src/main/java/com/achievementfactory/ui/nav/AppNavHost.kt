@@ -3,6 +3,7 @@ package com.achievementfactory.ui.nav
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -26,6 +27,24 @@ object Routes {
     fun detailOf(id: Long): String = "detail/$id"
 }
 
+/**
+ * Navigates only while the destination the click came from is still RESUMED — the standard
+ * Navigation-Compose debounce for click-driven navigation.
+ *
+ * A click callback fires immediately, but the back stack does not change until the navigation is
+ * actually applied. Two taps landing inside that gap — a double-tap on the FAB, or long-pressing
+ * two cards in quick succession — therefore each see the *same* current destination and both
+ * navigate, pushing two identical entries. The user then has to press Back twice to get out of
+ * one screen, and two independent ViewModels exist for it. The first `navigate` moves the current
+ * entry out of RESUMED, so this check rejects the second.
+ */
+private fun NavHostController.navigateOnce(route: String) {
+    val currentState = currentBackStackEntry?.lifecycle?.currentState ?: return
+    if (currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+        navigate(route)
+    }
+}
+
 /** The app's single [NavHost], hosting the Daily tab, creation-screen and detail destinations. */
 @Composable
 fun AppNavHost(navController: NavHostController) {
@@ -35,11 +54,11 @@ fun AppNavHost(navController: NavHostController) {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             DailyScreen(
                 uiState = uiState,
-                onCreateClick = { navController.navigate(Routes.CREATE) },
+                onCreateClick = { navController.navigateOnce(Routes.CREATE) },
                 onIncrement = viewModel::onIncrement,
                 // Long-press opens the detail screen (D-03) — reserved exclusively for this,
                 // never an undo gesture and never a quick-set stepper.
-                onLongPress = { id -> navController.navigate(Routes.detailOf(id)) },
+                onLongPress = { id -> navController.navigateOnce(Routes.detailOf(id)) },
                 undoRequests = viewModel.undoRequests,
                 onUndo = viewModel::onUndo,
                 celebrations = viewModel.celebrations,
