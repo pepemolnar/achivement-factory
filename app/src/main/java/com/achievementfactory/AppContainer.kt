@@ -29,11 +29,12 @@ class AppContainer(context: Context) {
     val periodEngine: PeriodEngine = PeriodEngine(appClock)
 
     /**
-     * Lives for the process's whole lifetime — backs the streak reconciliation pass launched
-     * from [AchievementFactoryApp.onCreate], which must outlive any single screen's
-     * `viewModelScope`. No background-scheduled job of any kind exists in this project; app-open
-     * reconciliation on this scope is the entire mechanism (ARCHITECTURE.md "Todo Expiry
-     * Without a Background Worker", carried over verbatim to streak reconciliation).
+     * Lives for the process's whole lifetime — backs the streak reconciliation pass [PeriodWatcher]
+     * launches on every signal (including the process-lifecycle `onStart` that stands in for "app
+     * opened"), which must outlive any single screen's `viewModelScope`. No background-scheduled
+     * job of any kind exists in this project; reconciliation on this scope is the entire mechanism
+     * (ARCHITECTURE.md "Todo Expiry Without a Background Worker", carried over verbatim to streak
+     * reconciliation).
      */
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -75,7 +76,8 @@ class AppContainer(context: Context) {
     /**
      * Started from [AchievementFactoryApp.onCreate] — refreshes [currentPeriodProvider] and
      * reruns [reconcileStreaks] on every date/time/timezone broadcast and process resume
-     * (PERIOD-04, PERIOD-06).
+     * (PERIOD-04, PERIOD-06). Its `onStart` signal is also the app-open pass (PERIOD-05); nothing
+     * else launches `runAll`.
      */
     val periodWatcher: PeriodWatcher by lazy {
         PeriodWatcher(
