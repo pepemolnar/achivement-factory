@@ -51,7 +51,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Tick off: whole-card tap, filling ring, done state, atomic undo
+- [x] 01-04-PLAN.md — Tick off: whole-card tap, filling ring, done state, atomic undo
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 3/8 | In Progress|  |
+| 1. Daily Achievements — Core Loop & Foundation | 4/8 | In Progress|  |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |

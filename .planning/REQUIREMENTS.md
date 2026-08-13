@@ -31,16 +31,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tracking
 
-- [ ] **TRACK-01**: User can increment an achievement's counter to log progress
-- [ ] **TRACK-02**: User can see partial progress on the card, visually distinct from being done
-- [ ] **TRACK-03**: An achievement becomes done for a period when its count reaches its done threshold
-- [ ] **TRACK-04**: User can undo an increment, and the done state, tier, and streak all update correctly
-- [ ] **TRACK-05**: User can only log progress for the current period — earlier periods are read-only
+- [x] **TRACK-01**: User can increment an achievement's counter to log progress
+- [x] **TRACK-02**: User can see partial progress on the card, visually distinct from being done
+- [x] **TRACK-03**: An achievement becomes done for a period when its count reaches its done threshold
+- [x] **TRACK-04**: User can undo an increment, and the done state, tier, and streak all update correctly
+- [x] **TRACK-05**: User can only log progress for the current period — earlier periods are read-only
 - [ ] **TRACK-06**: App tracks a streak of consecutive completed periods for each achievement, counted in that achievement's own period unit
 - [ ] **TRACK-07**: A missed period resets an achievement's streak to zero, with no grace period
 - [ ] **TRACK-08**: User can see the best streak ever reached for each achievement
 - [ ] **TRACK-09**: App records the highest tier reached in each completed period
-- [ ] **TRACK-10**: A closed period's recorded result is immutable and unaffected by later edits to the achievement
+- [x] **TRACK-10**: A closed period's recorded result is immutable and unaffected by later edits to the achievement
 
 ### Periods
 
@@ -148,16 +148,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TIER-05 | Phase 2 | Pending |
 | TIER-06 | Phase 2 | Pending |
 | TIER-07 | Phase 2 | Pending |
-| TRACK-01 | Phase 1 | Pending |
-| TRACK-02 | Phase 1 | Pending |
-| TRACK-03 | Phase 1 | Pending |
-| TRACK-04 | Phase 1 | Pending |
-| TRACK-05 | Phase 1 | Pending |
+| TRACK-01 | Phase 1 | Complete |
+| TRACK-02 | Phase 1 | Complete |
+| TRACK-03 | Phase 1 | Complete |
+| TRACK-04 | Phase 1 | Complete |
+| TRACK-05 | Phase 1 | Complete |
 | TRACK-06 | Phase 1 | Pending |
 | TRACK-07 | Phase 1 | Pending |
 | TRACK-08 | Phase 1 | Pending |
 | TRACK-09 | Phase 2 | Pending |
-| TRACK-10 | Phase 1 | Pending |
+| TRACK-10 | Phase 1 | Complete |
 | PERIOD-01 | Phase 1 | Complete |
 | PERIOD-02 | Phase 2 | Pending |
 | PERIOD-03 | Phase 2 | Pending |
