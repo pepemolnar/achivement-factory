@@ -8,7 +8,7 @@ import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.AppClock
 import com.achievementfactory.period.CurrentPeriodProvider
-import com.achievementfactory.period.PeriodEngine
+import com.achievementfactory.period.PeriodKey
 import com.achievementfactory.period.PeriodType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 class AchievementRepository(
     private val achievementDao: AchievementDao,
     private val progressDao: ProgressDao,
-    private val periodEngine: PeriodEngine,
     private val clock: AppClock,
     private val reconcileStreaks: ReconcileStreaksUseCase,
     private val currentPeriodProvider: CurrentPeriodProvider,
@@ -115,9 +114,9 @@ class AchievementRepository(
     }
 
     /**
-     * Logs one tap of progress against **today only** — this method resolves
-     * `periodEngine.current(PeriodType.DAILY)` itself and never accepts a period key from its
-     * caller, which is what makes TRACK-05/TRACK-10 structural rather than a runtime check
+     * Logs one tap of progress against **today only** — this method resolves today's key itself
+     * (see [resolveTodayKeyForWrite]) and never accepts a period key from its caller, which is
+     * what makes TRACK-05/TRACK-10 structural rather than a runtime check
      * someone could forget (T-01-14). Row creation, the atomic counter update, and the
      * read-back of the resulting count all happen inside
      * [ProgressDao.incrementAndRead]'s single transaction (T-01-15), so [IncrementOutcome.newCount]
@@ -139,7 +138,7 @@ class AchievementRepository(
      */
     suspend fun increment(achievementId: Long): IncrementOutcome? {
         val target = achievementDao.getById(achievementId)?.counterTarget ?: return null
-        val todayKey = periodEngine.current(PeriodType.DAILY)
+        val todayKey = resolveTodayKeyForWrite()
         val newCount = progressDao.incrementAndRead(achievementId, todayKey.value, target, clock.epochDay())
         val isDone = newCount >= target
         val previousCount = newCount - 1
@@ -170,7 +169,7 @@ class AchievementRepository(
      * streak earned by the increment this undo reverses drops back down in the same call.
      */
     suspend fun undo(token: UndoToken): Boolean {
-        val todayKey = periodEngine.current(PeriodType.DAILY)
+        val todayKey = resolveTodayKeyForWrite()
         if (token.periodKey != todayKey) return false
         val target = achievementDao.getById(token.achievementId)?.counterTarget ?: return false
         val affected = progressDao.undoIfUnchanged(
@@ -183,5 +182,31 @@ class AchievementRepository(
         val succeeded = affected > 0
         if (succeeded) reconcileStreaks.runFor(token.achievementId, todayKey, force = true)
         return succeeded
+    }
+
+    /**
+     * Resolves "today" for a write by refreshing [CurrentPeriodProvider] and then reading it,
+     * rather than calling `periodEngine.current` independently.
+     *
+     * [refresh][CurrentPeriodProvider.refresh] recomputes from the live clock, so this still
+     * resolves today's key *at the moment of the write* — TRACK-05/TRACK-10 and D-28 are
+     * unaffected, and an increment still cannot land anywhere but the current period.
+     *
+     * What it additionally buys is that the read side agrees. [observeDaily]/[observeDetail] are
+     * joined against `currentPeriodProvider.currentDailyKey`, which only moves when something
+     * calls `refresh()` — a system date broadcast or a process resume. Between real midnight and
+     * that signal arriving, a write resolving the clock independently would key its progress row
+     * to the *new* day while the UI was still showing the *old* day's row: the tap would appear to
+     * do nothing, the undo token would name a row the user cannot see, and a completion
+     * celebration could fire on a card that visibly stayed incomplete. Refreshing first collapses
+     * that window — the read flows re-subscribe to the same key this write is about to use.
+     *
+     * `refresh()` is a [kotlinx.coroutines.flow.MutableStateFlow] assignment, which suppresses an
+     * assignment equal to the current value, so on an unchanged day this is free and produces no
+     * downstream re-emission.
+     */
+    private fun resolveTodayKeyForWrite(): PeriodKey {
+        currentPeriodProvider.refresh()
+        return currentPeriodProvider.currentDailyKey.value
     }
 }

@@ -56,7 +56,6 @@ class RolloverTest {
         repository = AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             clock = clock,
             reconcileStreaks = ReconcileStreaksUseCase(
                 achievementDao = database.achievementDao(),
@@ -118,6 +117,44 @@ class RolloverTest {
         assertEquals(1, yesterdayRow?.count)
         assertEquals(true, yesterdayRow?.done)
     }
+
+    /**
+     * The divergence window WR-02 is about: real midnight has passed but no `ACTION_DATE_CHANGED`
+     * broadcast or process resume has called `refresh()` yet, so the read flows are still joined
+     * against yesterday's key. A write that resolved the clock independently of
+     * [CurrentPeriodProvider] would key its progress row to the *new* day while the collected
+     * `observeDaily` was still showing the *old* one — the tap would visibly do nothing, and the
+     * undo token would name a row the user cannot see. Note that no `refresh()` is called here:
+     * the write itself is what has to move the provider.
+     */
+    @Test
+    fun increment_afterMidnightWithNoRefreshSignal_isVisibleToTheAlreadyCollectedReadFlow() = runBlocking {
+        val id = createAchievement(target = 1)
+
+        repository.observeDaily().test {
+            assertEquals(0, awaitItem().single().count)
+
+            // Midnight passes. Nothing has told the provider yet.
+            currentDate.set(currentDate.get().plusDays(1))
+
+            val outcome = repository.increment(id)!!
+            assertEquals(1, outcome.newCount)
+
+            val afterIncrement = awaitItem()
+            assertEquals("the tap must be visible on the day it was written to", 1, afterIncrement.single().count)
+            assertTrue(afterIncrement.single().isDone)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // ...and it landed on the new day, not the old one — the D-28 immutability guarantee.
+        assertEquals(1, database.progressDao().getFor(id, currentDate.get().toString())?.count)
+        assertEquals(currentDate.get().toString(), outcomeKeyProbe(id))
+    }
+
+    /** The single period key this achievement has any progress row for. */
+    private suspend fun outcomeKeyProbe(achievementId: Long): String? =
+        database.progressDao().doneKeysFor(achievementId).singleOrNull()
 
     @Test
     fun observeDetail_alreadyCollected_reEmitsNotDone_afterClockAdvancesAndRefreshIsCalled() = runBlocking {

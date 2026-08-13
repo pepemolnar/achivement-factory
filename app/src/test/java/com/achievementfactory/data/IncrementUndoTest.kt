@@ -59,7 +59,6 @@ class IncrementUndoTest {
         repository = AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             clock = clock,
             reconcileStreaks = ReconcileStreaksUseCase(
                 achievementDao = database.achievementDao(),

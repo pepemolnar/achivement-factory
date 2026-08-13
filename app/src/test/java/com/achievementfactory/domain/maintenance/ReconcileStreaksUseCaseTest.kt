@@ -61,7 +61,6 @@ class ReconcileStreaksUseCaseTest {
         repository = AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             clock = clock,
             reconcileStreaks = reconcileStreaks,
             currentPeriodProvider = CurrentPeriodProvider(periodEngine),

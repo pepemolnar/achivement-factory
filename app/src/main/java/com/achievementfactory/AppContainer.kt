@@ -66,7 +66,6 @@ class AppContainer(context: Context) {
         AchievementRepository(
             achievementDao = database.achievementDao(),
             progressDao = database.progressDao(),
-            periodEngine = periodEngine,
             clock = appClock,
             reconcileStreaks = reconcileStreaks,
             currentPeriodProvider = currentPeriodProvider,
