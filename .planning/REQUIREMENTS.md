@@ -9,8 +9,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Achievements
 
-- [ ] **ACH-01**: User can create an achievement with a name and a period of daily, weekly, or monthly
-- [ ] **ACH-02**: User can assign an icon and an accent colour to an achievement
+- [x] **ACH-01**: User can create an achievement with a name and a period of daily, weekly, or monthly
+- [x] **ACH-02**: User can assign an icon and an accent colour to an achievement
 - [ ] **ACH-03**: User can edit an achievement's name, icon, and colour at any time without affecting its streak
 - [ ] **ACH-04**: User can raise an achievement's done threshold or tier thresholds after creation and keep the existing streak
 - [ ] **ACH-05**: App prevents lowering a threshold or changing the period after creation, so a streak can never be made easier retroactively
@@ -21,7 +21,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tiers
 
-- [ ] **TIER-01**: User can create an achievement with a plain counter target and no tiers, defaulting to a target of 1
+- [x] **TIER-01**: User can create an achievement with a plain counter target and no tiers, defaulting to a target of 1
 - [ ] **TIER-02**: User can attach a tier ladder to an achievement and set the threshold count for each tier
 - [ ] **TIER-03**: Tier names are fixed as Bronze, Silver, and Gold, and cannot be renamed
 - [ ] **TIER-04**: App accepts only tier ladders that fill downward from Gold — `{Gold}`, `{Silver, Gold}`, or `{Bronze, Silver, Gold}` — and rejects any set omitting Gold or skipping a level
@@ -132,8 +132,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACH-01 | Phase 1 | Pending |
-| ACH-02 | Phase 1 | Pending |
+| ACH-01 | Phase 1 | Complete |
+| ACH-02 | Phase 1 | Complete |
 | ACH-03 | Phase 3 | Pending |
 | ACH-04 | Phase 3 | Pending |
 | ACH-05 | Phase 3 | Pending |
@@ -141,7 +141,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACH-07 | Phase 3 | Pending |
 | ACH-08 | Phase 3 | Pending |
 | ACH-09 | Phase 3 | Pending |
-| TIER-01 | Phase 1 | Pending |
+| TIER-01 | Phase 1 | Complete |
 | TIER-02 | Phase 2 | Pending |
 | TIER-03 | Phase 2 | Pending |
 | TIER-04 | Phase 2 | Pending |

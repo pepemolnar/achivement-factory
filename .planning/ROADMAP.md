@@ -47,7 +47,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Create a daily achievement from a full-screen form behind the FAB
+- [x] 01-03-PLAN.md — Create a daily achievement from a full-screen form behind the FAB
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 2/8 | In Progress|  |
+| 1. Daily Achievements — Core Loop & Foundation | 3/8 | In Progress|  |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |
