@@ -82,7 +82,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DATA-02**: App declares no `INTERNET` permission, making the offline guarantee OS-enforced
 - [x] **DATA-03**: Room schemas are exported and migrations are tested; destructive migration is never used, so streak history cannot be silently lost
 - [x] **DATA-04**: App state survives process death and device restart
-- [ ] **DATA-05**: App builds as a release APK and installs directly on the owner's device
+- [x] **DATA-05**: App builds as a release APK and installs directly on the owner's device
 
 ## v2 Requirements
 
@@ -184,7 +184,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 1 | Complete |
 | DATA-03 | Phase 1 | Complete |
 | DATA-04 | Phase 1 | Complete |
-| DATA-05 | Phase 1 | Pending |
+| DATA-05 | Phase 1 | Complete |
 
 **Coverage:**
 

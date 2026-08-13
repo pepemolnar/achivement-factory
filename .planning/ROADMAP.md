@@ -13,7 +13,7 @@ Achievement Factory ships as five vertical slices, each one installable and usab
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Daily Achievements — Core Loop & Foundation** - Create, track, undo, and streak a daily achievement on a correctly modelled period and persistence foundation
+- [x] **Phase 1: Daily Achievements — Core Loop & Foundation** - Create, track, undo, and streak a daily achievement on a correctly modelled period and persistence foundation (completed 2026-08-13)
 - [ ] **Phase 2: Full Achievement Model — Periods & Tiers** - Extend to weekly/monthly periods across three tabs, plus the Bronze/Silver/Gold tier ladder and its scaled celebration
 - [ ] **Phase 3: Achievement Management — Edit, Archive & Reorder** - Full lifecycle control over existing achievements, with history that can never be made easier retroactively
 - [ ] **Phase 4: Todos & Unified Archive** - One-off todos alongside achievements in every tab, with a shared archive for anything archived or expired
@@ -67,7 +67,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 01-08-PLAN.md — Ship: signed release APK, migration harness, recorded conventions
+- [x] 01-08-PLAN.md — Ship: signed release APK, migration harness, recorded conventions
 
 **UI hint**: yes
 
@@ -143,7 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Daily Achievements — Core Loop & Foundation | 7/8 | In Progress|  |
+| 1. Daily Achievements — Core Loop & Foundation | 8/8 | Complete   | 2026-08-13 |
 | 2. Full Achievement Model — Periods & Tiers | 0/TBD | Not started | - |
 | 3. Achievement Management — Edit, Archive & Reorder | 0/TBD | Not started | - |
 | 4. Todos & Unified Archive | 0/TBD | Not started | - |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-07-PLAN.md
-last_updated: "2026-08-13T11:02:49.081Z"
+status: verifying
+stopped_at: Completed 01-08-PLAN.md (phase 1 complete)
+last_updated: "2026-08-13T11:30:23.753Z"
 last_activity: 2026-08-13 -- Phase 01 execution started
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 7
-  percent: 0
+  completed_plans: 8
+  percent: 20
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-27)
 
 Phase: 01 (daily-achievements-core-loop-foundation) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-13 -- Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P05 | 20min | 2 tasks | 15 files |
 | Phase 01 P06 | 25min | 2 tasks | 20 files |
 | Phase 01 P07 | 40min | 2 tasks | 21 files |
+| Phase 01 P08 | 35min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Phase 01-07: IncrementOutcome gained newStreak (read back post-reconciliation) so CelebrationEvent.isFirstFlame never races DailyUiState's own async re-emission of the same write
 - [Phase ?]: Phase 01-07: ProgressRing/StreakFlameBadge own no animation clock of their own; AchievementCard (resting/done) and CompletionCelebration (celebrating) are the only two places that drive their animated values
 - [Phase ?]: Phase 01-07: the growing checkmark (D-11) is a PathMeasure-trimmed polyline drawn on ProgressRing's own Canvas, not a separate icon layer
+- [Phase ?]: [Phase 01-08]: SchemaExportTest checks git-tracking (git ls-files), not just File.exists() -- the Room Gradle plugin regenerates the schema JSON on every compile, so a bare existence check can never catch an uncommitted schema bump
+- [Phase ?]: [Phase 01-08]: Release keystore is local, gitignored, and generated with keytool RSA-2048/10000-day validity; keyPassword equals storePassword since PKCS12 doesn't support them differing
 
 ### Pending Todos
 
@@ -109,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T11:02:49.068Z
-Stopped at: Completed 01-07-PLAN.md
+Last session: 2026-08-13T11:30:23.743Z
+Stopped at: Completed 01-08-PLAN.md (phase 1 complete)
 Resume file: None

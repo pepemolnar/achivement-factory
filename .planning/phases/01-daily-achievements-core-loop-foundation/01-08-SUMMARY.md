@@ -152,3 +152,7 @@ All on-device verification from this plan (and every prior plan in this phase) r
 ---
 *Phase: 01-daily-achievements-core-loop-foundation*
 *Completed: 2026-08-13*
+
+## Self-Check: PASSED
+
+All 4 created files (`docs/RELEASE.md`, `SchemaExportTest.kt`, `MigrationTest.kt`, this SUMMARY.md) verified present on disk; all 3 commits (`530f6f7`, `e3b0de4`, `43f673f`) verified present in `git log`.
