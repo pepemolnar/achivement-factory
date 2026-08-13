@@ -133,14 +133,115 @@ A personal Android app for tracking recurring achievements and one-off todos acr
 
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+Established during Phase 1 (daily-achievements-core-loop-foundation). Binding for Phases 2–5
+per SKELETON.md — build on these, don't renegotiate them.
+
+**Package layout.** Layer-then-feature under `app/src/main/java/com/achievementfactory/`:
+`period/` (civil-date math, depends on nothing else in the project), `data/` (Room entities,
+DAOs, repositories, one subpackage per aggregate — `data/achievement/`, `data/progress/`),
+`domain/` (`domain/model/` for plain data classes crossing layers, `domain/streak/`,
+`domain/maintenance/` for use cases), `ui/` (one subpackage per screen — `ui/daily/`,
+`ui/create/`, `ui/detail/`, `ui/celebration/`, `ui/theme/`, `ui/nav/`, plus shared composables
+directly under `ui/achievement/`). No `di/` package — see DI below.
+
+**ViewModel and UiState shape.** One `StateFlow<XxxUiState>` per screen, built with
+`.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), XxxUiState.Loading)` off a
+reactive repository `Flow` — never polled, never manually refreshed. `XxxUiState` is a sealed
+interface (`Loading` / `Content` / `Error` / `NotFound`, as the screen needs). Screens expose
+plain intent methods (`onIncrement(id)`, `onUndo(token)`), not a dispatched-action pattern. Each
+ViewModel's companion object exposes a `Factory: ViewModelProvider.Factory` built with
+`viewModelFactory { initializer { ... } }`, reading `AchievementFactoryApp` off
+`this[APPLICATION_KEY]` to reach `app.container`. A ViewModel that needs a route argument reads
+it via `createSavedStateHandle()` inside that same initializer block.
+
+**State versus events.** One-shot signals — undo snackbars, completion celebrations — travel on
+a dedicated `Channel(Channel.BUFFERED)` exposed as `.receiveAsFlow()`, collected by the screen
+under `repeatOnLifecycle(STARTED)`. A `Channel` holds no buffered history, so a collector that
+subscribes after rotation or process restoration receives nothing — never the last-delivered
+event. These events are never folded into a `UiState` and never derived from one; they are
+emitted only at the exact transition edge that produced them (e.g. `IncrementOutcome
+.justCompleted`). This is what makes CELEB-04 (a celebration plays exactly once) hold, and the
+rule every later phase's new one-shot signal must follow.
+
+**Dependency injection.** A single hand-written `AppContainer`, constructed once in
+`AchievementFactoryApp.onCreate()`, exposing lazily-built repositories and use cases backed by
+one `AppDatabase` instance. No DI framework of any kind. ViewModels reach it through their
+`Factory` via `AchievementFactoryApp`, never by constructor injection from a framework.
+
+**Repository and layering rules.** Repositories own transaction boundaries — DAOs expose atomic,
+single-purpose queries; a repository composes them inside `@Transaction`-annotated DAO methods
+or its own suspend functions, never leaving a multi-step write half-applied. Room entities
+(`AchievementEntity`, `ProgressEntity`) never cross into `ui/`; screens and ViewModels see only
+`domain/model/` types (`DailyAchievement`, `AchievementDetail`, etc.), mapped at the repository
+boundary.
+
+**Period rules.** `java.time` civil types only (`LocalDate`, `YearMonth`) — never epoch-millis
+arithmetic for period boundaries. `DayOfWeek.MONDAY` is hardcoded everywhere a week boundary is
+needed; week identity is the `LocalDate` of that week's Monday, never an ISO week-of-year
+number. `CurrentPeriodProvider` is the single `StateFlow<PeriodKey>` every *read* path
+subscribes to — no other read call site resolves "what day is it" independently (grep-gated).
+Write paths (`increment`/`undo`) resolve today's key internally at the moment of the write,
+rather than trusting a value read earlier that could be stale by the time the write lands.
+
+**Counter mutation.** Every counter change is a single atomic SQL statement inside the DAO —
+`UPDATE ... SET count = count + 1 ...` — never a Kotlin-side read followed by a write. Undo is a
+compare-and-set `UPDATE ... WHERE count = :expectedCount`, so a stale undo token that no longer
+matches the live row is silently a no-op rather than corrupting a newer increment.
+
+**Migration rule.** The destructive-migration-fallback builder options must never appear in this
+codebase. Every schema version bump ships a real `Migration(n, n + 1)`, adds it to the
+`Room.databaseBuilder(...)` call in `AppContainer`, commits the newly exported schema JSON under
+`app/schemas/`, and extends `MigrationTest` to migrate a *populated* prior-version database
+rather than a fresh empty one. `SchemaExportTest` fails the build if a version bump's schema
+export exists on disk but was never committed to git. See `docs/RELEASE.md` for the full
+runbook — this is a standing rule from the first release install onward, not a Phase 1 detail.
+
+**Animation convention.** Every animation duration, spring spec, and stage delay this project
+uses lives in `ui/theme/MotionSpecs.kt` — no literal-digit `delay(250)` or inline
+`tween(300)` anywhere else. `rememberReducedMotion()` in that same file is the only sanctioned
+reader of the system's reduced-motion setting (grep-gated); every animation resolves its spec
+through `MotionSpecs.resolve`/`resolveDelay`/`resolvePlacement`, so a new tier or celebration
+variant inherits reduced-motion handling automatically instead of needing its own check.
+
+**Testing convention.** Pure JUnit4 for `period/` and `domain/` (no Android dependency). Room
+DAO/repository tests run on the JVM under Robolectric rather than requiring a device. Turbine
+for asserting `Flow`/`Channel` sequences. MockK for mocking concrete classes (this project has
+no repository interface — `AchievementRepository` is mocked directly). Compose UI tests and
+`MigrationTestHelper` tests live in `androidTest` and are compile-gated (`assembleDebugAndroidTest`)
+in any environment without an attached device/emulator. `./gradlew :app:testDebugUnitTest` is
+the complete, device-free correctness gate every plan in this project runs before committing.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+**Layers, top to bottom.** `ui/` (Compose screens + ViewModels) depends on `domain/` (plain
+model types and use cases) and `data/` (repositories) depends on Room's generated DAOs, which
+depend on `AppDatabase`. `period/` sits underneath everything — it depends on nothing else in
+the project (not even `data/`) and is the one package every other layer is free to import
+directly. A ViewModel never touches a DAO or `AppDatabase` directly; it always goes through a
+repository. A Compose screen never touches a repository directly; it always goes through its
+ViewModel's `StateFlow<UiState>` plus its `Channel`-backed event flow(s).
+
+**Entities.** `AchievementEntity` (the achievement's identity, period type, counter target,
+optional Bronze/Silver/Gold thresholds, archived flag, and the streak-cache columns below) and
+`ProgressEntity` (one row per achievement per period instance — the append-only log of what
+happened in each period, unique on `(achievementId, periodKey)`, `CASCADE`-deleted with its
+parent achievement).
+
+**Streaks are a cache, not a source of truth.** `AchievementEntity.currentStreak`/`bestStreak`/
+`streakCachedForPeriodKey` exist purely to make rendering fast — the real source of truth is the
+immutable `progress` log. Whenever the cache is behind the current period key,
+`ReconcileStreaksUseCase` recomputes it with a bounded backward walk through that log. This is
+lazy — there is no background worker — reconciliation runs at app open and on every
+date/time/timezone signal `PeriodWatcher` observes, so a streak is always self-healing after any
+length of absence rather than requiring catch-up bookkeeping.
+
+**Navigation.** A single `MainActivity` with one `NavHost` (Navigation Compose). Routes:
+`daily`, `create`, `detail/{achievementId}`. Phase 2's three tabs become lateral state inside the
+`daily` destination rather than three additional nav routes — the route graph does not grow with
+period-type coverage.
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->

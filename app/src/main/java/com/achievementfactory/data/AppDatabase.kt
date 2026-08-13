@@ -8,6 +8,13 @@ import com.achievementfactory.data.progress.ProgressDao
 import com.achievementfactory.data.progress.ProgressEntity
 
 /**
+ * The single source of truth for the schema version, driving both the `@Database` annotation
+ * below and `SchemaExportTest`'s check that a matching `app/schemas/` file exists — so the two
+ * can never silently drift apart.
+ */
+const val APP_DATABASE_VERSION = 1
+
+/**
  * Schema version 1. `exportSchema = true` plus the committed JSON under `app/schemas/` is what
  * makes `MigrationTestHelper` possible for every future schema change (PITFALLS 7).
  *
@@ -18,7 +25,7 @@ import com.achievementfactory.data.progress.ProgressEntity
  */
 @Database(
     entities = [AchievementEntity::class, ProgressEntity::class],
-    version = 1,
+    version = APP_DATABASE_VERSION,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
