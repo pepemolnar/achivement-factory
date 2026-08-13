@@ -3,6 +3,7 @@ package com.achievementfactory
 import android.content.Context
 import androidx.room.Room
 import com.achievementfactory.data.AppDatabase
+import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.period.AppClock
 import com.achievementfactory.period.PeriodEngine
 import com.achievementfactory.period.SystemAppClock
@@ -26,5 +27,14 @@ class AppContainer(context: Context) {
             AppDatabase::class.java,
             DATABASE_NAME,
         ).build()
+    }
+
+    val achievementRepository: AchievementRepository by lazy {
+        AchievementRepository(
+            achievementDao = database.achievementDao(),
+            progressDao = database.progressDao(),
+            periodEngine = periodEngine,
+            clock = appClock,
+        )
     }
 }
