@@ -2,6 +2,7 @@ package com.achievementfactory.data.achievement
 
 import com.achievementfactory.data.progress.ProgressDao
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
+import com.achievementfactory.domain.model.AchievementDetail
 import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
@@ -55,6 +56,34 @@ class AchievementRepository(
                     bestStreak = achievement.bestStreak,
                 )
             }
+        }
+    }
+
+    /**
+     * The read-only detail-screen source (TRACK-08, D-13) — the same join shape as
+     * [observeDaily] narrowed to one achievement, and the only read path that ever surfaces
+     * [AchievementDetail.bestStreak]. Emits `null` when [id] does not resolve to a row, which
+     * [com.achievementfactory.ui.detail.AchievementDetailViewModel] maps to its `NotFound` state.
+     */
+    fun observeDetail(id: Long): Flow<AchievementDetail?> {
+        val todayKey = periodEngine.current(PeriodType.DAILY)
+        return combine(
+            achievementDao.observeById(id),
+            progressDao.observeForPeriod(todayKey.value),
+        ) { achievement, progressRows ->
+            if (achievement == null) return@combine null
+            val progress = progressRows.firstOrNull { it.achievementId == achievement.id }
+            AchievementDetail(
+                id = achievement.id,
+                name = achievement.name,
+                icon = achievement.icon,
+                accent = AccentSwatch.valueOf(achievement.accentSwatch),
+                target = achievement.counterTarget,
+                todayCount = progress?.count ?: 0,
+                isDone = progress?.done ?: false,
+                currentStreak = achievement.currentStreak,
+                bestStreak = achievement.bestStreak,
+            )
         }
     }
 

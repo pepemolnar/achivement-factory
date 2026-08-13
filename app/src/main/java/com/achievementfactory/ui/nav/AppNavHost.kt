@@ -6,23 +6,27 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.achievementfactory.ui.create.CreateAchievementScreen
 import com.achievementfactory.ui.create.CreateAchievementViewModel
 import com.achievementfactory.ui.daily.DailyScreen
 import com.achievementfactory.ui.daily.DailyViewModel
+import com.achievementfactory.ui.detail.AchievementDetailScreen
+import com.achievementfactory.ui.detail.AchievementDetailViewModel
 
-/**
- * Route constants. [DAILY] and [CREATE] are reachable; the read-only detail route is added by a
- * later plan.
- */
+/** Route constants — [DAILY], [CREATE] and the read-only [DETAIL] destination (D-03). */
 object Routes {
     const val DAILY = "daily"
     const val CREATE = "create"
+    const val DETAIL = "detail/{achievementId}"
+
+    fun detailOf(id: Long): String = "detail/$id"
 }
 
-/** The app's single [NavHost], hosting the Daily tab and the creation-screen destinations. */
+/** The app's single [NavHost], hosting the Daily tab, creation-screen and detail destinations. */
 @Composable
 fun AppNavHost(navController: NavHostController) {
     NavHost(navController = navController, startDestination = Routes.DAILY) {
@@ -33,11 +37,22 @@ fun AppNavHost(navController: NavHostController) {
                 uiState = uiState,
                 onCreateClick = { navController.navigate(Routes.CREATE) },
                 onIncrement = viewModel::onIncrement,
-                // Long-press opens the detail screen (D-03) — that route is added in plan 01-06;
-                // wiring it there is a one-line change since this parameter already exists.
-                onLongPress = {},
+                // Long-press opens the detail screen (D-03) — reserved exclusively for this,
+                // never an undo gesture and never a quick-set stepper.
+                onLongPress = { id -> navController.navigate(Routes.detailOf(id)) },
                 undoRequests = viewModel.undoRequests,
                 onUndo = viewModel::onUndo,
+            )
+        }
+        composable(
+            route = Routes.DETAIL,
+            arguments = listOf(navArgument("achievementId") { type = NavType.LongType }),
+        ) {
+            val viewModel: AchievementDetailViewModel = viewModel(factory = AchievementDetailViewModel.Factory)
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            AchievementDetailScreen(
+                uiState = uiState,
+                onBack = { navController.popBackStack() },
             )
         }
         composable(Routes.CREATE) {
