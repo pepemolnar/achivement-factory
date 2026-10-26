@@ -25,6 +25,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.achievementfactory.period.PeriodType
+import com.achievementfactory.ui.archive.ArchivedScreen
+import com.achievementfactory.ui.archive.ArchivedViewModel
 import com.achievementfactory.ui.create.CreateAchievementScreen
 import com.achievementfactory.ui.create.CreateAchievementViewModel
 import com.achievementfactory.ui.detail.AchievementDetailScreen
@@ -42,6 +44,10 @@ object Routes {
     const val PERIOD_TYPE_ARG = "periodType"
     const val CREATE = "create?$PERIOD_TYPE_ARG={$PERIOD_TYPE_ARG}"
     const val DETAIL = "detail/{achievementId}"
+    const val EDIT = "edit/{achievementId}"
+    const val ARCHIVED = "archived"
+
+    fun editOf(id: Long): String = "edit/$id"
 
     fun createFor(periodType: PeriodType): String = "create?$PERIOD_TYPE_ARG=${periodType.name}"
 
@@ -99,6 +105,8 @@ fun AppNavHost(navController: NavHostController) {
                     bottomBar = {
                         PeriodTabBar(selected = selectedTab, onSelect = { selectedTab = it })
                     },
+                    onReorder = viewModel::onReorder,
+                    onOpenArchived = { navController.navigateOnce(Routes.ARCHIVED) },
                 )
             }
         }
@@ -111,7 +119,28 @@ fun AppNavHost(navController: NavHostController) {
             AchievementDetailScreen(
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
+                onEdit = { id -> navController.navigateOnce(Routes.editOf(id)) },
+                onArchive = viewModel::onArchive,
+                closeRequests = viewModel.closeRequests,
             )
+        }
+        composable(Routes.ARCHIVED) {
+            val viewModel: ArchivedViewModel = viewModel(factory = ArchivedViewModel.Factory)
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            ArchivedScreen(
+                uiState = uiState,
+                onBack = { navController.popBackStack() },
+                onRestore = viewModel::onRestore,
+                onDeletePermanently = viewModel::onDeletePermanently,
+            )
+        }
+        composable(
+            route = Routes.EDIT,
+            arguments = listOf(navArgument("achievementId") { type = NavType.LongType }),
+        ) {
+            // The same form as creation, in edit mode (D-14's intended reuse): the ViewModel's
+            // Factory finds `achievementId` in the SavedStateHandle and loads the achievement.
+            AchievementForm(navController)
         }
         composable(
             route = Routes.CREATE,
@@ -122,32 +151,38 @@ fun AppNavHost(navController: NavHostController) {
                 },
             ),
         ) {
-            val viewModel: CreateAchievementViewModel = viewModel(factory = CreateAchievementViewModel.Factory)
-            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-            LaunchedEffect(uiState.saved) {
-                if (uiState.saved) {
-                    navController.popBackStack()
-                }
-            }
-
-            CreateAchievementScreen(
-                uiState = uiState,
-                onNameChange = viewModel::onNameChange,
-                onIconChange = viewModel::onIconChange,
-                onAccentChange = viewModel::onAccentChange,
-                onPeriodTypeChange = viewModel::onPeriodTypeChange,
-                onTargetChange = viewModel::onTargetChange,
-                onToggleAdvanced = viewModel::onToggleAdvanced,
-                onTiersEnabledChange = viewModel::onTiersEnabledChange,
-                onBronzeChange = viewModel::onBronzeChange,
-                onSilverChange = viewModel::onSilverChange,
-                onGoldChange = viewModel::onGoldChange,
-                onSave = viewModel::onSave,
-                onBack = { navController.popBackStack() },
-            )
+            AchievementForm(navController)
         }
     }
+}
+
+/** The create/edit form destination body, shared by [Routes.CREATE] and [Routes.EDIT]. */
+@Composable
+private fun AchievementForm(navController: NavHostController) {
+    val viewModel: CreateAchievementViewModel = viewModel(factory = CreateAchievementViewModel.Factory)
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(uiState.saved) {
+        if (uiState.saved) {
+            navController.popBackStack()
+        }
+    }
+
+    CreateAchievementScreen(
+        uiState = uiState,
+        onNameChange = viewModel::onNameChange,
+        onIconChange = viewModel::onIconChange,
+        onAccentChange = viewModel::onAccentChange,
+        onPeriodTypeChange = viewModel::onPeriodTypeChange,
+        onTargetChange = viewModel::onTargetChange,
+        onToggleAdvanced = viewModel::onToggleAdvanced,
+        onTiersEnabledChange = viewModel::onTiersEnabledChange,
+        onBronzeChange = viewModel::onBronzeChange,
+        onSilverChange = viewModel::onSilverChange,
+        onGoldChange = viewModel::onGoldChange,
+        onSave = viewModel::onSave,
+        onBack = { navController.popBackStack() },
+    )
 }
 
 /** The three-tab switcher (NAV-01) — Daily, Weekly, Monthly, in that fixed order. */

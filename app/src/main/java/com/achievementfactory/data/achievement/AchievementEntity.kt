@@ -1,11 +1,14 @@
 package com.achievementfactory.data.achievement
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Schema version 1. This is the one chance to get the column set right before every future
+ * Schema version 2 (version 1 plus [sortOrder] — see [com.achievementfactory.data.MIGRATION_1_2]).
+ *
+ * Originally schema version 1. This is the one chance to get the column set right before every future
  * change requires a migration, so it carries columns Phases 2 and 3 need even though this
  * phase does not populate them:
  *
@@ -37,4 +40,8 @@ data class AchievementEntity(
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
     val streakCachedForPeriodKey: String? = null,
+    // Position within its tab (ACH-09): ascending, 0-based, unique among the tab's *active*
+    // achievements after any reorder. `defaultValue = "0"` must match the `DEFAULT 0` in
+    // MIGRATION_1_2's ALTER TABLE exactly, or Room's post-migration schema validation fails.
+    @ColumnInfo(defaultValue = "0") val sortOrder: Int = 0,
 )

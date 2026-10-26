@@ -11,6 +11,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.achievementfactory.AchievementFactoryApp
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.domain.edit.ThresholdChangeError
+import com.achievementfactory.domain.edit.ThresholdChangeRule
+import com.achievementfactory.domain.model.AchievementDefinition
+import com.achievementfactory.domain.model.UpdateResult
 import com.achievementfactory.domain.tier.TierLadder
 import com.achievementfactory.domain.tier.TierLadderError
 import com.achievementfactory.domain.tier.TierLadderValidation
@@ -25,6 +29,7 @@ import kotlinx.coroutines.launch
 
 private const val NAME_REQUIRED_ERROR = "Name is required."
 private const val SAVE_FAILED_ERROR = "Couldn't save. Try again."
+private const val NOT_FOUND_ERROR = "This achievement is no longer here."
 private const val TAG = "CreateAchievementVM"
 
 /** The message shown under the tier fields for each way a ladder can be invalid (TIER-04/05). */
@@ -36,21 +41,83 @@ internal fun TierLadderError.message(): String = when (this) {
     TierLadderError.NOT_INCREASING -> "Each medal needs a higher count than the one below it."
 }
 
+/** Why an edit's thresholds were refused, in the owner's words, quoting the old values. */
+internal fun ThresholdChangeError.message(original: AchievementDefinition): String = when (this) {
+    ThresholdChangeError.TargetLowered ->
+        "The target can only go up — it's ${original.target} now. A lower one would make the streak easier."
+    is ThresholdChangeError.TierLowered ->
+        "${tier.displayName} can't go below ${original.tiers?.thresholdOf(tier)}."
+    is ThresholdChangeError.TierRemoved -> "${tier.displayName} can't be removed once it's set."
+    ThresholdChangeError.LadderRemoved -> "Medal tiers can't be turned off once they're set."
+    ThresholdChangeError.StreakMadeEasier ->
+        "That would make the streak easier to keep — the lowest medal must stay at ${original.target} or more."
+}
+
 /**
- * Form state, validation and save for the achievement-creation screen (D-14 through D-19, plus
- * the period picker and tier ladder — PERIOD-02, PERIOD-03, TIER-02 through TIER-06). Copies the
- * [ViewModel] + `Factory` convention established by `PeriodViewModel`. [initialPeriodType] is the
- * tab the FAB was pressed on, read from the `create` route's argument by [Factory].
+ * Form state, validation and save for the achievement form — creation (D-14 through D-19, plus
+ * the period picker and tier ladder — PERIOD-02, PERIOD-03, TIER-02 through TIER-06) and, when
+ * [editingId] is set, editing (ACH-03 – ACH-05). Copies the [ViewModel] + `Factory` convention
+ * established by `PeriodViewModel`. [initialPeriodType] is the tab the FAB was pressed on, read
+ * from the `create` route's argument by [Factory]; [editingId] comes from the `edit` route.
+ *
+ * In edit mode the period can't change, an existing ladder can't be switched off, and thresholds
+ * are checked with [ThresholdChangeRule] before saving — the repository enforces the same rule
+ * again inside its write transaction, so the form's check is a courtesy, not the guarantee.
  */
 class CreateAchievementViewModel(
     private val repository: AchievementRepository,
     initialPeriodType: PeriodType = PeriodType.DAILY,
+    private val editingId: Long? = null,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(CreateAchievementUiState(periodType = initialPeriodType))
+    private val _uiState = MutableStateFlow(
+        CreateAchievementUiState(periodType = initialPeriodType, editingId = editingId, loading = editingId != null),
+    )
     val uiState: StateFlow<CreateAchievementUiState> = _uiState.asStateFlow()
 
     private var saveInFlight = false
+
+    /** The achievement as it was when edit mode loaded it — what thresholds are compared against. */
+    private var original: AchievementDefinition? = null
+
+    init {
+        if (editingId != null) load(editingId)
+    }
+
+    private fun load(id: Long) {
+        viewModelScope.launch {
+            val definition = try {
+                repository.getDefinition(id)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                Log.w(TAG, "load failed for achievement id=$id", failure)
+                null
+            }
+            if (definition == null) {
+                _uiState.update { it.copy(loading = false, saveError = NOT_FOUND_ERROR) }
+                return@launch
+            }
+            original = definition
+            val tiers = definition.tiers
+            _uiState.update {
+                it.copy(
+                    loading = false,
+                    name = definition.name,
+                    icon = definition.icon,
+                    accent = definition.accent,
+                    periodType = definition.periodType,
+                    targetInput = definition.target.toString(),
+                    tiersEnabled = tiers != null,
+                    bronzeInput = tiers?.bronze?.toString() ?: "",
+                    silverInput = tiers?.silver?.toString() ?: "",
+                    goldInput = tiers?.gold?.toString() ?: "",
+                    ladderLocked = tiers != null,
+                    advancedExpanded = tiers != null || definition.target > 1,
+                )
+            }
+        }
+    }
 
     fun onNameChange(name: String) {
         _uiState.update { it.copy(name = name, nameError = null) }
@@ -69,7 +136,9 @@ class CreateAchievementViewModel(
         _uiState.update { it.copy(accent = accent) }
     }
 
+    /** Ignored in edit mode — the period can never change after creation (ACH-05). */
     fun onPeriodTypeChange(periodType: PeriodType) {
+        if (_uiState.value.isEditing) return
         _uiState.update { it.copy(periodType = periodType) }
     }
 
@@ -83,7 +152,7 @@ class CreateAchievementViewModel(
      */
     fun onTargetChange(rawTarget: String) {
         if (!isAcceptableCount(rawTarget)) return
-        _uiState.update { it.copy(targetInput = rawTarget) }
+        _uiState.update { it.copy(targetInput = rawTarget, thresholdError = null) }
     }
 
     fun onToggleAdvanced() {
@@ -91,23 +160,24 @@ class CreateAchievementViewModel(
     }
 
     fun onTiersEnabledChange(enabled: Boolean) {
-        _uiState.update { it.copy(tiersEnabled = enabled, tierError = null) }
+        if (_uiState.value.ladderLocked && !enabled) return
+        _uiState.update { it.copy(tiersEnabled = enabled, tierError = null, thresholdError = null) }
     }
 
     /** Same raw-text, digits-only, 3-digit rule as [onTargetChange]; a cleared field is "no Bronze". */
     fun onBronzeChange(raw: String) {
         if (!isAcceptableCount(raw)) return
-        _uiState.update { it.copy(bronzeInput = raw, tierError = null) }
+        _uiState.update { it.copy(bronzeInput = raw, tierError = null, thresholdError = null) }
     }
 
     fun onSilverChange(raw: String) {
         if (!isAcceptableCount(raw)) return
-        _uiState.update { it.copy(silverInput = raw, tierError = null) }
+        _uiState.update { it.copy(silverInput = raw, tierError = null, thresholdError = null) }
     }
 
     fun onGoldChange(raw: String) {
         if (!isAcceptableCount(raw)) return
-        _uiState.update { it.copy(goldInput = raw, tierError = null) }
+        _uiState.update { it.copy(goldInput = raw, tierError = null, thresholdError = null) }
     }
 
     /**
@@ -126,7 +196,7 @@ class CreateAchievementViewModel(
      */
     fun onSave() {
         val current = _uiState.value
-        if (saveInFlight || current.saved) return
+        if (saveInFlight || current.saved || current.loading) return
 
         val trimmedName = current.name.trim()
         val nameError = if (trimmedName.isEmpty()) NAME_REQUIRED_ERROR else null
@@ -151,10 +221,30 @@ class CreateAchievementViewModel(
             return
         }
 
+        val editing = original
+        if (editingId != null && editing == null) return // edit mode whose load failed
+        if (editing != null) {
+            val refusal = ThresholdChangeRule.check(editing.target, editing.tiers, current.target, ladder)
+            if (refusal != null) {
+                _uiState.update { it.copy(thresholdError = refusal.message(editing), advancedExpanded = true) }
+                return
+            }
+        }
+
         saveInFlight = true
         _uiState.update { it.copy(saveError = null) }
         viewModelScope.launch {
             try {
+                if (editing != null) {
+                    when (val result = repository.update(editing.id, trimmedName, current.icon, current.accent, current.target, ladder)) {
+                        UpdateResult.Updated -> _uiState.update { it.copy(saved = true) }
+                        UpdateResult.NotFound -> _uiState.update { it.copy(saveError = NOT_FOUND_ERROR) }
+                        is UpdateResult.Refused -> _uiState.update {
+                            it.copy(thresholdError = result.error.message(editing), advancedExpanded = true)
+                        }
+                    }
+                    return@launch
+                }
                 repository.create(
                     trimmedName,
                     current.icon,
@@ -188,7 +278,9 @@ class CreateAchievementViewModel(
                 // Tolerant parse: an absent or unrecognized argument opens the form on Daily.
                 val requested = savedStateHandle.get<String>("periodType")
                 val initialPeriodType = PeriodType.entries.firstOrNull { it.name == requested } ?: PeriodType.DAILY
-                CreateAchievementViewModel(app.container.achievementRepository, initialPeriodType)
+                // Present only on the `edit/{achievementId}` route; null means "create".
+                val editingId = savedStateHandle.get<Long>("achievementId")
+                CreateAchievementViewModel(app.container.achievementRepository, initialPeriodType, editingId)
             }
         }
     }

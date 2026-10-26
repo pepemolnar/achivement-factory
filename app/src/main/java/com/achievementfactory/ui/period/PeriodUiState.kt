@@ -16,6 +16,8 @@ sealed interface PeriodUiState {
         val outstanding: List<TrackedAchievement>,
         val done: List<TrackedAchievement>,
         val heldBackIds: Set<Long> = emptySet(),
+        /** Every achievement in the tab's stored order (ACH-09) — what reorder mode shows. */
+        val all: List<TrackedAchievement> = outstanding + done,
     ) : PeriodUiState {
         val isEmpty: Boolean get() = outstanding.isEmpty() && done.isEmpty()
 
@@ -28,7 +30,7 @@ sealed interface PeriodUiState {
              */
             fun partition(achievements: List<TrackedAchievement>, heldBackIds: Set<Long> = emptySet()): Content {
                 val (done, outstanding) = achievements.partition { it.isDone && it.id !in heldBackIds }
-                return Content(outstanding = outstanding, done = done, heldBackIds = heldBackIds)
+                return Content(outstanding = outstanding, done = done, heldBackIds = heldBackIds, all = achievements)
             }
         }
     }

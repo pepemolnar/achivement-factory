@@ -1,5 +1,6 @@
 package com.achievementfactory.ui.period
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,11 +11,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -22,11 +27,16 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -72,8 +82,15 @@ fun PeriodScreen(
     celebrations: Flow<CelebrationEvent>,
     onCelebrationSettled: (Long) -> Unit,
     bottomBar: @Composable () -> Unit = {},
+    onReorder: (List<Long>) -> Unit = {},
+    onOpenArchived: () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    // Reorder mode (ACH-09): entered from the top-bar menu, left with Done or Back. Saveable so a
+    // rotation mid-reorder doesn't drop the user out of it.
+    var reorderMode by rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = reorderMode) { reorderMode = false }
     val lifecycleOwner = LocalLifecycleOwner.current
     val activeCelebrations = remember { mutableStateMapOf<Long, CelebrationEvent>() }
 
@@ -109,11 +126,47 @@ fun PeriodScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(text = periodType.tabLabel(), style = MaterialTheme.typography.headlineSmall) })
+            TopAppBar(
+                title = {
+                    Text(
+                        text = if (reorderMode) "Reorder" else periodType.tabLabel(),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                },
+                actions = {
+                    if (reorderMode) {
+                        TextButton(onClick = { reorderMode = false }) { Text("Done") }
+                    } else {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            val canReorder = (uiState as? PeriodUiState.Content)?.all?.size?.let { it > 1 } == true
+                            DropdownMenuItem(
+                                text = { Text("Reorder") },
+                                enabled = canReorder,
+                                onClick = {
+                                    menuOpen = false
+                                    reorderMode = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Archived") },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenArchived()
+                                },
+                            )
+                        }
+                    }
+                },
+            )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateClick) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = "Add achievement")
+            if (!reorderMode) {
+                FloatingActionButton(onClick = onCreateClick) {
+                    Icon(imageVector = Icons.Filled.Add, contentDescription = "Add achievement")
+                }
             }
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -124,6 +177,8 @@ fun PeriodScreen(
             is PeriodUiState.Error -> ErrorBody(innerPadding, uiState.message)
             is PeriodUiState.Content -> if (uiState.isEmpty) {
                 EmptyBody(innerPadding, periodType)
+            } else if (reorderMode) {
+                ReorderList(innerPadding = innerPadding, achievements = uiState.all, onReorder = onReorder)
             } else {
                 PeriodList(
                     innerPadding = innerPadding,

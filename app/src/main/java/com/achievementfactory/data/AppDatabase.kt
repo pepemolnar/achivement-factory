@@ -12,10 +12,11 @@ import com.achievementfactory.data.progress.ProgressEntity
  * below and `SchemaExportTest`'s check that a matching `app/schemas/` file exists — so the two
  * can never silently drift apart.
  */
-const val APP_DATABASE_VERSION = 1
+const val APP_DATABASE_VERSION = 2
 
 /**
- * Schema version 1. `exportSchema = true` plus the committed JSON under `app/schemas/` is what
+ * Schema version 2 — v1 plus `achievements.sortOrder` (ACH-09), reached through
+ * [MIGRATION_1_2]. `exportSchema = true` plus the committed JSON under `app/schemas/` is what
  * makes `MigrationTestHelper` possible for every future schema change (PITFALLS 7).
  *
  * The destructive-migration-fallback builder options must never appear in this builder chain

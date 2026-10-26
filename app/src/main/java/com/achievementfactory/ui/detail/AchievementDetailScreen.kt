@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -21,6 +23,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
@@ -46,7 +54,17 @@ import com.achievementfactory.ui.theme.color
 fun AchievementDetailScreen(
     uiState: AchievementDetailUiState,
     onBack: () -> Unit,
+    onEdit: (Long) -> Unit = {},
+    onArchive: () -> Unit = {},
+    closeRequests: Flow<Unit> = emptyFlow(),
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(closeRequests, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            closeRequests.collect { onBack() }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -54,6 +72,19 @@ fun AchievementDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Edit and archive live here, one long-press away from the card, so a tap on
+                    // a card always stays +1 (Phase 3 decision). Archiving is reversible from the
+                    // Archived screen, so it needs no confirmation.
+                    if (uiState is AchievementDetailUiState.Content) {
+                        IconButton(onClick = { onEdit(uiState.detail.id) }) {
+                            Icon(imageVector = Icons.Filled.Edit, contentDescription = "Edit")
+                        }
+                        IconButton(onClick = onArchive) {
+                            Icon(imageVector = Icons.Filled.Archive, contentDescription = "Archive")
+                        }
                     }
                 },
             )

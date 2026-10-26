@@ -3,6 +3,7 @@ package com.achievementfactory
 import android.content.Context
 import androidx.room.Room
 import com.achievementfactory.data.AppDatabase
+import com.achievementfactory.data.MIGRATION_1_2
 import com.achievementfactory.data.achievement.AchievementRepository
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.streak.StreakCalculator
@@ -43,7 +44,11 @@ class AppContainer(context: Context) {
             context.applicationContext,
             AppDatabase::class.java,
             DATABASE_NAME,
-        ).build()
+        )
+            // Every schema version bump adds its real Migration here — never a destructive
+            // fallback (docs/RELEASE.md, "The migration rule").
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     val streakCalculator: StreakCalculator = StreakCalculator(periodEngine)

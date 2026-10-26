@@ -45,6 +45,8 @@ fun AdvancedSection(
     silverInput: String = "",
     goldInput: String = "",
     tierError: String? = null,
+    targetError: String? = null,
+    ladderLocked: Boolean = false,
     onTiersEnabledChange: (Boolean) -> Unit = {},
     onBronzeChange: (String) -> Unit = {},
     onSilverChange: (String) -> Unit = {},
@@ -67,7 +69,7 @@ fun AdvancedSection(
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 if (!tiersEnabled) {
-                    CounterTargetField(targetInput = targetInput, onTargetChange = onTargetChange)
+                    CounterTargetField(targetInput = targetInput, onTargetChange = onTargetChange, error = targetError)
                 }
                 TierLadderFields(
                     enabled = tiersEnabled,
@@ -75,6 +77,7 @@ fun AdvancedSection(
                     silverInput = silverInput,
                     goldInput = goldInput,
                     error = tierError,
+                    locked = ladderLocked,
                     onEnabledChange = onTiersEnabledChange,
                     onBronzeChange = onBronzeChange,
                     onSilverChange = onSilverChange,
@@ -97,16 +100,22 @@ fun CounterTargetField(
     targetInput: String,
     onTargetChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    error: String? = null,
 ) {
     OutlinedTextField(
         value = targetInput,
         onValueChange = onTargetChange,
         label = { Text("Counter target") },
+        isError = error != null,
         supportingText = {
-            Text(
-                "The achievement is done when the count reaches this number " +
-                    "(${CreateAchievementUiState.MIN_TARGET}–${CreateAchievementUiState.MAX_TARGET}).",
-            )
+            if (error != null) {
+                Text(error, color = MaterialTheme.colorScheme.error)
+            } else {
+                Text(
+                    "The achievement is done when the count reaches this number " +
+                        "(${CreateAchievementUiState.MIN_TARGET}–${CreateAchievementUiState.MAX_TARGET}).",
+                )
+            }
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -127,6 +136,7 @@ private fun TierLadderFields(
     silverInput: String,
     goldInput: String,
     error: String?,
+    locked: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onBronzeChange: (String) -> Unit,
     onSilverChange: (String) -> Unit,
@@ -145,9 +155,11 @@ private fun TierLadderFields(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // An achievement that already has medals can't drop them (ACH-05) — the switch stays on.
             Switch(
                 checked = enabled,
                 onCheckedChange = onEnabledChange,
+                enabled = !locked,
                 modifier = Modifier.padding(start = Spacing.sm),
             )
         }

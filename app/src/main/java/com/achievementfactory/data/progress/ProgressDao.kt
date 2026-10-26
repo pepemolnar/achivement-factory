@@ -106,6 +106,36 @@ interface ProgressDao {
     suspend fun countFor(achievementId: Long, periodKey: String): Int?
 
     /**
+     * Re-derives `done` and `tierReached` for one row from its *existing* count against new
+     * thresholds, in a single statement. Only ever called for the current, still-open period when
+     * an achievement's thresholds are raised (ACH-04) — a closed period's snapshot is never
+     * rewritten (TRACK-10). Never changes `count`.
+     */
+    @Query(
+        """UPDATE progress
+           SET done = (count >= :target),
+               tierReached = CASE
+                   WHEN count >= :gold THEN 'GOLD'
+                   WHEN count >= :silver THEN 'SILVER'
+                   WHEN count >= :bronze THEN 'BRONZE'
+                   ELSE NULL
+               END
+           WHERE achievementId = :achievementId AND periodKey = :periodKey"""
+    )
+    suspend fun resnapshot(
+        achievementId: Long,
+        periodKey: String,
+        target: Int,
+        bronze: Int?,
+        silver: Int?,
+        gold: Int?,
+    ): Int
+
+    /** Belt-and-braces companion to the `CASCADE` foreign key for a permanent delete (ACH-08). */
+    @Query("DELETE FROM progress WHERE achievementId = :achievementId")
+    suspend fun deleteAllFor(achievementId: Long): Int
+
+    /**
      * Row creation, the atomic increment, and the read-back of the resulting count as one unit
      * (T-01-15) — this is what lets the repository's increment call report a count that matches
      * exactly what *this* call produced, even under concurrent taps, since SQLite serializes

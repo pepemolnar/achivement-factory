@@ -51,10 +51,10 @@ class MigrationTest {
     )
 
     @Test
-    fun version1Database_createdFromTheExportedSchema_survivesACloseAndReopenWithDataIntact() {
+    fun populatedVersion1Database_migratesTo2_andReopensThroughRoomWithDataIntact() {
         val createdAtEpochDay = 20_000L
 
-        helper.createDatabase(TEST_DB, APP_DATABASE_VERSION).apply {
+        helper.createDatabase(TEST_DB, 1).apply {
             execSQL(
                 """
                 INSERT INTO achievements
@@ -77,8 +77,13 @@ class MigrationTest {
             close()
         }
 
+        // v1 -> v2 (ACH-09's sortOrder). Validates the migrated schema against the committed 2.json.
+        helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2).close()
+
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val reopened = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB).build()
+        val reopened = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
+            .addMigrations(MIGRATION_1_2)
+            .build()
         helper.closeWhenFinished(reopened)
 
         runBlocking {
@@ -88,6 +93,7 @@ class MigrationTest {
             assertEquals(3, achievement?.currentStreak)
             assertEquals(5, achievement?.bestStreak)
             assertEquals("2026-08-12", achievement?.streakCachedForPeriodKey)
+            assertEquals("the only daily achievement is first in its tab", 0, achievement?.sortOrder)
 
             // The fixture must stay a row the *application* could actually have written. It used
             // to seed accentSwatch = 'BLUE', which is not an AccentSwatch member at all (the ten

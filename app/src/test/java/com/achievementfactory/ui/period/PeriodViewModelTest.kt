@@ -24,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import com.achievementfactory.period.PeriodType
+import io.mockk.coVerify
 
 /**
  * A plain JVM test (no Robolectric needed) — [AchievementRepository] is mocked with MockK, which
@@ -189,5 +190,29 @@ class PeriodViewModelTest {
         assertEquals(listOf(heldBackDone), content.outstanding)
         assertEquals(listOf(ordinaryDone), content.done)
         assertTrue(content.heldBackIds.contains(1L))
+    }
+
+    @Test
+    fun onReorder_persistsTheOrderForThisTabsPeriod() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observePeriod(PeriodType.WEEKLY) } returns flowOf(emptyList())
+        coEvery { repository.reorder(PeriodType.WEEKLY, listOf(3L, 1L, 2L)) } returns Unit
+
+        val viewModel = PeriodViewModel(repository, PeriodType.WEEKLY)
+        viewModel.onReorder(listOf(3L, 1L, 2L))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.reorder(PeriodType.WEEKLY, listOf(3L, 1L, 2L)) }
+    }
+
+    @Test
+    fun contentPartition_keepsTheStoredOrderInAll() {
+        val first = achievement(id = 1, isDone = true)
+        val second = achievement(id = 2, isDone = false)
+
+        val content = PeriodUiState.Content.partition(listOf(first, second))
+
+        assertEquals(listOf(first, second), content.all)
+        assertEquals(listOf(second), content.outstanding)
     }
 }

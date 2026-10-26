@@ -51,6 +51,10 @@ object MotionSpecs {
     val cardSink: FiniteAnimationSpec<IntOffset> =
         spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
 
+    /** Neighbouring cards sliding out of the way while one is dragged in reorder mode (ACH-09). */
+    val reorderPlacement: FiniteAnimationSpec<IntOffset> =
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
     /** What every [Float]-valued spec above collapses to under reduced motion. */
     val reducedCollapse: AnimationSpec<Float> = tween(durationMillis = 90, easing = LinearEasing)
 

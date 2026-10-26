@@ -164,6 +164,19 @@ class PeriodViewModel(
     }
 
     /**
+     * Persists the order the user dragged the tab into (ACH-09). Fire-and-forget: the list is a
+     * live Room flow, so the stored order comes straight back on the next emission. Guarded like
+     * every other write here, because an exception escaping `viewModelScope.launch` kills the
+     * process.
+     */
+    fun onReorder(orderedIds: List<Long>) {
+        viewModelScope.launch {
+            runCatching { repository.reorder(periodType, orderedIds) }
+                .onFailure { Log.w(TAG, "reorder failed for $periodType", it) }
+        }
+    }
+
+    /**
      * Called once the completion celebration's final stage finishes — releases [id] from the
      * held-back set so its card is free to sink into Done on the next [uiState] emission (D-06).
      * Idempotent: calling it for an id that was never held back, or twice for the same id, is a

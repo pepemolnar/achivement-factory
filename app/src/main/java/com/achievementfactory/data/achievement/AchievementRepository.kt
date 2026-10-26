@@ -4,11 +4,15 @@ import androidx.room.withTransaction
 import com.achievementfactory.data.AppDatabase
 import com.achievementfactory.data.progress.ProgressDao
 import com.achievementfactory.data.progress.ProgressEntity
+import com.achievementfactory.domain.edit.ThresholdChangeRule
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
+import com.achievementfactory.domain.model.AchievementDefinition
+import com.achievementfactory.domain.model.ArchivedAchievement
 import com.achievementfactory.domain.model.AchievementDetail
 import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.TrackedAchievement
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.domain.model.UpdateResult
 import com.achievementfactory.domain.tier.Tier
 import com.achievementfactory.domain.tier.TierLadder
 import com.achievementfactory.period.AppClock
@@ -103,7 +107,10 @@ class AchievementRepository(
         target: Int,
         periodType: PeriodType = PeriodType.DAILY,
         tiers: TierLadder? = null,
-    ): Long {
+    ): Long = database.withTransaction {
+        // New achievements go to the end of their tab (ACH-09). Read and insert share one
+        // transaction so two quick creates can't both claim the same position.
+        val nextPosition = (achievementDao.maxSortOrder(periodType.name) ?: -1) + 1
         val entity = AchievementEntity(
             name = name,
             periodType = periodType.name,
@@ -117,9 +124,148 @@ class AchievementRepository(
             currentStreak = 0,
             bestStreak = 0,
             streakCachedForPeriodKey = null,
+            sortOrder = nextPosition,
         )
-        return achievementDao.insert(entity)
+        achievementDao.insert(entity)
     }
+
+    /** The editable definition of one achievement, or null when [id] no longer resolves. */
+    suspend fun getDefinition(id: Long): AchievementDefinition? {
+        val achievement = achievementDao.getById(id) ?: return null
+        return AchievementDefinition(
+            id = achievement.id,
+            name = achievement.name,
+            icon = achievement.icon,
+            accent = swatchOf(achievement.accentSwatch),
+            periodType = periodTypeOf(achievement) ?: PeriodType.DAILY,
+            target = achievement.counterTarget,
+            tiers = achievement.ladder(),
+            archived = achievement.archived,
+        )
+    }
+
+    /**
+     * Edits an achievement (ACH-03, ACH-04, ACH-05). The period type is not a parameter at all —
+     * it cannot change after creation. Name, icon and colour always apply and never touch the
+     * streak. Thresholds go through [ThresholdChangeRule] inside the same transaction as the
+     * write, so nothing can make the streak (or "done") easier, whatever the caller checked.
+     *
+     * When the thresholds do change, the *current* period's progress row is re-snapshotted against
+     * them ([ProgressDao.resnapshot]) and the streak is reconciled, so the new rules apply to the
+     * period that is still open: raising today's target past today's count makes today not done
+     * yet. Closed periods are never rewritten (TRACK-10).
+     */
+    suspend fun update(
+        id: Long,
+        name: String,
+        icon: String?,
+        accent: AccentSwatch,
+        target: Int,
+        tiers: TierLadder?,
+    ): UpdateResult {
+        refreshForWrite()
+        return database.withTransaction<UpdateResult> {
+            val achievement = achievementDao.getById(id) ?: return@withTransaction UpdateResult.NotFound
+            val oldLadder = achievement.ladder()
+            val refusal = ThresholdChangeRule.check(
+                oldTarget = achievement.counterTarget,
+                oldLadder = oldLadder,
+                newTarget = target,
+                newLadder = tiers,
+            )
+            if (refusal != null) return@withTransaction UpdateResult.Refused(refusal)
+
+            achievementDao.updateAppearance(id, name, icon, accent.name)
+
+            val newCounterTarget = tiers?.streakThreshold ?: target
+            val thresholdsChanged = newCounterTarget != achievement.counterTarget || tiers != oldLadder
+            val periodType = periodTypeOf(achievement)
+            if (thresholdsChanged) {
+                achievementDao.updateThresholds(id, newCounterTarget, tiers?.bronze, tiers?.silver, tiers?.gold)
+                if (periodType != null) {
+                    val currentKey = currentPeriodProvider.current(periodType).value
+                    progressDao.resnapshot(id, currentKey.value, newCounterTarget, tiers?.bronze, tiers?.silver, tiers?.gold)
+                    reconcileStreaks.runFor(id, currentKey, force = true, keyPeriodType = periodType)
+                }
+            }
+            UpdateResult.Updated
+        }
+    }
+
+    /**
+     * Archives an achievement (ACH-06): it leaves its tab, and its whole history — progress log,
+     * best streak — stays exactly as it is. Reversible with [restore]. Returns false when [id] no
+     * longer resolves.
+     */
+    suspend fun archive(id: Long): Boolean = database.withTransaction<Boolean> {
+        val achievement = achievementDao.getById(id) ?: return@withTransaction false
+        achievementDao.setArchived(id, archived = true, sortOrder = achievement.sortOrder)
+        true
+    }
+
+    /**
+     * Restores an archived achievement to the end of its tab (ACH-07). Archiving does not pause a
+     * streak — periods that passed while archived were missed like any others — so the streak is
+     * reconciled from the log in the same transaction, and the card comes back showing the truth.
+     */
+    suspend fun restore(id: Long): Boolean {
+        refreshForWrite()
+        return database.withTransaction<Boolean> {
+            val achievement = achievementDao.getById(id) ?: return@withTransaction false
+            val periodType = periodTypeOf(achievement) ?: return@withTransaction false
+            val nextPosition = (achievementDao.maxSortOrder(periodType.name) ?: -1) + 1
+            achievementDao.setArchived(id, archived = false, sortOrder = nextPosition)
+            reconcileStreaks.runFor(
+                id,
+                currentPeriodProvider.current(periodType).value,
+                force = true,
+                keyPeriodType = periodType,
+            )
+            true
+        }
+    }
+
+    /**
+     * Permanently deletes an *archived* achievement and its entire history (ACH-08). Refuses —
+     * returning false without touching anything — for an achievement that is not archived, so an
+     * active achievement can never be deleted in one step; the confirmation lives in the UI.
+     */
+    suspend fun deletePermanently(id: Long): Boolean = database.withTransaction<Boolean> {
+        val achievement = achievementDao.getById(id) ?: return@withTransaction false
+        if (!achievement.archived) return@withTransaction false
+        progressDao.deleteAllFor(id)
+        achievementDao.deleteIfArchived(id) == 1
+    }
+
+    /**
+     * Persists a tab's order (ACH-09): [orderedIds] become positions 0, 1, 2, … in one
+     * transaction, so a reorder is never left half-applied. Ids that are not active achievements
+     * of [periodType] are skipped rather than given a position in the wrong tab.
+     */
+    suspend fun reorder(periodType: PeriodType, orderedIds: List<Long>) {
+        database.withTransaction {
+            orderedIds.forEachIndexed { position, id ->
+                val achievement = achievementDao.getById(id) ?: return@forEachIndexed
+                if (achievement.archived || achievement.periodType != periodType.name) return@forEachIndexed
+                achievementDao.updateSortOrder(id, position)
+            }
+        }
+    }
+
+    /** Everything archived, for the Archived screen (ACH-06 – ACH-08). */
+    fun observeArchived(): Flow<List<ArchivedAchievement>> =
+        achievementDao.observeArchived().map { rows ->
+            rows.map { achievement ->
+                ArchivedAchievement(
+                    id = achievement.id,
+                    name = achievement.name,
+                    icon = achievement.icon,
+                    accent = swatchOf(achievement.accentSwatch),
+                    periodType = periodTypeOf(achievement) ?: PeriodType.DAILY,
+                    bestStreak = achievement.bestStreak,
+                )
+            }
+        }
 
     /**
      * Logs one tap of progress against **the current period only** — this method resolves the

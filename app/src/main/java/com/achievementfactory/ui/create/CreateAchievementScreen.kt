@@ -1,6 +1,7 @@
 package com.achievementfactory.ui.create
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.achievementfactory.data.achievement.AccentSwatch
@@ -57,7 +60,12 @@ fun CreateAchievementScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "New achievement", style = MaterialTheme.typography.headlineSmall) },
+                title = {
+                    Text(
+                        text = if (uiState.isEditing) "Edit achievement" else "New achievement",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -82,12 +90,17 @@ fun CreateAchievementScreen(
                         onClick = onSave,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Save achievement")
+                        Text(if (uiState.isEditing) "Save changes" else "Save achievement")
                     }
                 }
             }
         },
     ) { innerPadding ->
+        if (uiState.loading) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -119,7 +132,7 @@ fun CreateAchievementScreen(
 
             AccentSwatchPicker(selected = uiState.accent, onSelect = onAccentChange)
 
-            PeriodPicker(selected = uiState.periodType, onSelect = onPeriodTypeChange)
+            PeriodPicker(selected = uiState.periodType, onSelect = onPeriodTypeChange, locked = uiState.isEditing)
 
             Column(modifier = Modifier.padding(top = Spacing.lg)) {
                 AdvancedSection(
@@ -131,13 +144,16 @@ fun CreateAchievementScreen(
                     bronzeInput = uiState.bronzeInput,
                     silverInput = uiState.silverInput,
                     goldInput = uiState.goldInput,
-                    tierError = uiState.tierError,
+                    tierError = uiState.tierError ?: uiState.thresholdError.takeIf { uiState.tiersEnabled },
+                    targetError = uiState.thresholdError.takeIf { !uiState.tiersEnabled },
+                    ladderLocked = uiState.ladderLocked,
                     onTiersEnabledChange = onTiersEnabledChange,
                     onBronzeChange = onBronzeChange,
                     onSilverChange = onSilverChange,
                     onGoldChange = onGoldChange,
                 )
             }
+        }
         }
     }
 }
@@ -149,7 +165,7 @@ fun CreateAchievementScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit) {
+private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit, locked: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Text(text = "Repeats", style = MaterialTheme.typography.labelLarge)
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -158,6 +174,7 @@ private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit) {
                 SegmentedButton(
                     selected = type == selected,
                     onClick = { onSelect(type) },
+                    enabled = !locked || type == selected,
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 ) {
                     Text(type.tabLabel())
@@ -165,7 +182,7 @@ private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit) {
             }
         }
         Text(
-            text = when (selected) {
+            text = if (locked) "The period can't change after an achievement is created." else when (selected) {
                 PeriodType.DAILY -> "Resets every day at midnight."
                 PeriodType.WEEKLY -> "Resets every Monday. Weeks run Monday to Sunday."
                 PeriodType.MONTHLY -> "Resets on the 1st of every month."

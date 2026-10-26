@@ -34,7 +34,17 @@ data class CreateAchievementUiState(
     val tierError: String? = null,
     val saveError: String? = null,
     val saved: Boolean = false,
+    /** Non-null in edit mode (ACH-03 – ACH-05): the id of the achievement being edited. */
+    val editingId: Long? = null,
+    /** True while edit mode loads the achievement; the form is not shown until it is false. */
+    val loading: Boolean = false,
+    /** Edit mode only: the achievement already has medals, so the ladder can't be switched off. */
+    val ladderLocked: Boolean = false,
+    /** Edit mode only: why the threshold change was refused (it would make things easier). */
+    val thresholdError: String? = null,
 ) {
+    val isEditing: Boolean get() = editingId != null
+
     /**
      * The counter target the save actually uses, coerced from [targetInput] only at the point of
      * reading rather than on every keystroke.
