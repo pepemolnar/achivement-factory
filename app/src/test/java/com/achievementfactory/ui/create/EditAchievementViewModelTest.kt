@@ -112,7 +112,7 @@ class EditAchievementViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(
-            "The target can only go up — it's 3 now. A lower one would make the streak easier.",
+            "The target (Gold, when medals are on) can only go up — it's 3 now.",
             viewModel.uiState.value.thresholdError,
         )
         assertFalse(viewModel.uiState.value.saved)
@@ -120,22 +120,53 @@ class EditAchievementViewModelTest {
     }
 
     @Test
-    fun anExistingLadder_cannotBeSwitchedOff() = runTest(testDispatcher) {
-        val laddered = plain.copy(target = 2, tiers = TierLadder(null, 2, 4))
-        val viewModel = CreateAchievementViewModel(repositoryWith(laddered), editingId = 7L)
+    fun aLadderedAchievement_loadsWithGoldAsItsTarget_andCanDropItsMedals() = runTest(testDispatcher) {
+        val repository = repositoryWith(plain.copy(target = 2, tiers = TierLadder(null, 2, 4)))
+        val viewModel = CreateAchievementViewModel(repository, editingId = 7L)
         testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.ladderLocked)
+        assertEquals("4", viewModel.uiState.value.targetInput)
+        assertEquals("4", viewModel.uiState.value.goldInput)
 
         viewModel.onTiersEnabledChange(false)
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value.tiersEnabled)
+        coVerify(exactly = 1) { repository.update(7L, "Read", "📖", AccentSwatch.TEAL, 4, null) }
+    }
+
+    @Test
+    fun loweringSilver_isAllowed() = runTest(testDispatcher) {
+        val repository = repositoryWith(plain.copy(target = 3, tiers = TierLadder(null, 3, 5)))
+        val viewModel = CreateAchievementViewModel(repository, editingId = 7L)
+        testDispatcher.scheduler.advanceUntilIdle()
+        viewModel.onSilverChange("1")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(null, viewModel.uiState.value.thresholdError)
+        coVerify(exactly = 1) { repository.update(7L, "Read", "📖", AccentSwatch.TEAL, any(), TierLadder(null, 1, 5)) }
+    }
+
+    @Test
+    fun loweringGold_isRefused() = runTest(testDispatcher) {
+        val repository = repositoryWith(plain.copy(target = 3, tiers = TierLadder(null, 3, 5)))
+        val viewModel = CreateAchievementViewModel(repository, editingId = 7L)
+        testDispatcher.scheduler.advanceUntilIdle()
+        viewModel.onGoldChange("4")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("The target (Gold, when medals are on) can only go up — it's 5 now.", viewModel.uiState.value.thresholdError)
+        coVerify(exactly = 0) { repository.update(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
     fun aRefusalFromTheRepository_isShownToo() = runTest(testDispatcher) {
         val repository = repositoryWith(plain)
         coEvery { repository.update(any(), any(), any(), any(), any(), any()) } returns
-            UpdateResult.Refused(ThresholdChangeError.TargetLowered)
+            UpdateResult.Refused(ThresholdChangeError.DoneLowered(3))
         val viewModel = CreateAchievementViewModel(repository, editingId = 7L)
         testDispatcher.scheduler.advanceUntilIdle()
 

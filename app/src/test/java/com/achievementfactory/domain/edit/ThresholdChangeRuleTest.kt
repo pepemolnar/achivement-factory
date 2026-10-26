@@ -1,12 +1,11 @@
 package com.achievementfactory.domain.edit
 
-import com.achievementfactory.domain.tier.Tier
 import com.achievementfactory.domain.tier.TierLadder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** ACH-04/ACH-05: thresholds can go up, never down — pure JUnit. */
+/** ACH-04/ACH-05 as revised: the target (Gold) never goes down; Bronze and Silver are free. */
 class ThresholdChangeRuleTest {
 
     private fun check(oldTarget: Int, oldLadder: TierLadder?, newTarget: Int, newLadder: TierLadder?) =
@@ -16,40 +15,37 @@ class ThresholdChangeRuleTest {
     fun plainTarget_mayRiseOrStay_butNotFall() {
         assertNull(check(3, null, 3, null))
         assertNull(check(3, null, 5, null))
-        assertEquals(ThresholdChangeError.TargetLowered, check(3, null, 2, null))
+        assertEquals(ThresholdChangeError.DoneLowered(3), check(3, null, 2, null))
     }
 
     @Test
-    fun addingALadder_isAllowedWhenItsLowestMedalIsAtLeastTheOldTarget() {
-        assertNull(check(3, null, 1, TierLadder(bronze = 3, silver = 5, gold = 8)))
-        assertNull(check(3, null, 1, TierLadder(bronze = null, silver = null, gold = 3)))
-        assertEquals(
-            ThresholdChangeError.StreakMadeEasier,
-            check(3, null, 1, TierLadder(bronze = 2, silver = 5, gold = 8)),
-        )
+    fun addingMedals_belowTheExistingTarget_isAllowed_whenTheTargetBecomesGold() {
+        assertNull(check(10, null, 0, TierLadder(bronze = 3, silver = 6, gold = 10)))
+        assertNull(check(10, null, 0, TierLadder(bronze = null, silver = null, gold = 12)))
+        assertEquals(ThresholdChangeError.DoneLowered(10), check(10, null, 0, TierLadder(3, 6, 9)))
     }
 
     @Test
-    fun removingALadder_isRefused() {
-        assertEquals(ThresholdChangeError.LadderRemoved, check(2, TierLadder(null, 2, 4), 99, null))
+    fun bronzeAndSilver_mayBeLoweredRaisedAddedOrRemoved() {
+        val old = TierLadder(bronze = 4, silver = 6, gold = 8) // stored target = 4 (the streak threshold)
+        assertNull(check(4, old, 0, TierLadder(1, 2, 8)))
+        assertNull(check(4, old, 0, TierLadder(null, 7, 8)))
+        assertNull(check(4, old, 0, TierLadder(null, null, 8)))
+        assertNull(check(4, old, 0, TierLadder(5, 7, 9)))
     }
 
     @Test
-    fun medals_mayRise_butNotFallOrDisappear() {
+    fun goldMayRise_butNotFall() {
+        val old = TierLadder(bronze = null, silver = 3, gold = 5)
+        assertNull(check(3, old, 0, TierLadder(null, 3, 6)))
+        assertEquals(ThresholdChangeError.DoneLowered(5), check(3, old, 0, TierLadder(null, 3, 4)))
+    }
+
+    @Test
+    fun switchingMedalsOff_keepsComparingAgainstGold() {
         val old = TierLadder(bronze = 2, silver = 4, gold = 6)
-        assertNull(check(2, old, 0, TierLadder(3, 5, 9)))
-        assertEquals(ThresholdChangeError.TierLowered(Tier.SILVER), check(2, old, 0, TierLadder(2, 3, 6)))
-        assertEquals(ThresholdChangeError.TierRemoved(Tier.BRONZE), check(2, old, 0, TierLadder(null, 4, 6)))
-    }
-
-    @Test
-    fun addingAMedalAboveTheLowest_isAllowed_butBelowItIsNot() {
-        val goldOnly = TierLadder(bronze = null, silver = null, gold = 5)
-        assertEquals(
-            "adding Silver below Gold lowers the streak threshold",
-            ThresholdChangeError.StreakMadeEasier,
-            check(5, goldOnly, 0, TierLadder(null, 3, 5)),
-        )
-        assertNull("raising Gold and adding Silver at the old Gold count keeps the streak as hard", check(5, goldOnly, 0, TierLadder(null, 5, 8)))
+        assertNull(check(2, old, 6, null))
+        assertNull(check(2, old, 9, null))
+        assertEquals(ThresholdChangeError.DoneLowered(6), check(2, old, 5, null))
     }
 }

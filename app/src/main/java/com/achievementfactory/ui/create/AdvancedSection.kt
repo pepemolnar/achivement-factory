@@ -46,7 +46,6 @@ fun AdvancedSection(
     goldInput: String = "",
     tierError: String? = null,
     targetError: String? = null,
-    ladderLocked: Boolean = false,
     onTiersEnabledChange: (Boolean) -> Unit = {},
     onBronzeChange: (String) -> Unit = {},
     onSilverChange: (String) -> Unit = {},
@@ -77,7 +76,6 @@ fun AdvancedSection(
                     silverInput = silverInput,
                     goldInput = goldInput,
                     error = tierError,
-                    locked = ladderLocked,
                     onEnabledChange = onTiersEnabledChange,
                     onBronzeChange = onBronzeChange,
                     onSilverChange = onSilverChange,
@@ -136,7 +134,6 @@ private fun TierLadderFields(
     silverInput: String,
     goldInput: String,
     error: String?,
-    locked: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onBronzeChange: (String) -> Unit,
     onSilverChange: (String) -> Unit,
@@ -150,16 +147,14 @@ private fun TierLadderFields(
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Medal tiers", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    text = "Bronze, Silver and Gold counts. Gold marks it done; the lowest medal you set keeps your streak going.",
+                    text = "Gold is your target and marks it done. Bronze and Silver are optional steps below it — the lowest one you set keeps your streak going.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // An achievement that already has medals can't drop them (ACH-05) — the switch stays on.
             Switch(
                 checked = enabled,
                 onCheckedChange = onEnabledChange,
-                enabled = !locked,
                 modifier = Modifier.padding(start = Spacing.sm),
             )
         }

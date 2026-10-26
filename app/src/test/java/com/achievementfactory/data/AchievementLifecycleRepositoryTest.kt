@@ -139,7 +139,7 @@ class AchievementLifecycleRepositoryTest {
 
         val result = repository.update(id, "Renamed", null, AccentSwatch.SKY, target = 2, tiers = null)
 
-        assertEquals(UpdateResult.Refused(ThresholdChangeError.TargetLowered), result)
+        assertEquals(UpdateResult.Refused(ThresholdChangeError.DoneLowered(3)), result)
         val entity = database.achievementDao().getById(id)!!
         assertEquals(3, entity.counterTarget)
         assertEquals("the whole edit is refused, not just the threshold", "Read", entity.name)
@@ -175,12 +175,50 @@ class AchievementLifecycleRepositoryTest {
     }
 
     @Test
-    fun removingAMedal_isRefused() = runBlocking {
+    fun loweringGold_isRefused() = runBlocking {
         val id = create("Push-ups", tiers = TierLadder(bronze = 1, silver = 2, gold = 3))
 
-        val result = repository.update(id, "Push-ups", null, AccentSwatch.SKY, target = 1, tiers = TierLadder(null, 2, 3))
+        val result = repository.update(id, "Push-ups", null, AccentSwatch.SKY, target = 1, tiers = TierLadder(null, 1, 2))
 
-        assertEquals(UpdateResult.Refused(ThresholdChangeError.TierRemoved(Tier.BRONZE)), result)
+        assertEquals(UpdateResult.Refused(ThresholdChangeError.DoneLowered(3)), result)
+    }
+
+    @Test
+    fun removingOrLoweringBronzeAndSilver_isAllowed_andKeepsGoldAsDone() = runBlocking {
+        val id = create("Push-ups", tiers = TierLadder(bronze = 4, silver = 6, gold = 8))
+
+        val result = repository.update(id, "Push-ups", null, AccentSwatch.SKY, target = 8, tiers = TierLadder(null, 2, 8))
+
+        assertEquals(UpdateResult.Updated, result)
+        val entity = database.achievementDao().getById(id)!!
+        assertEquals("the streak threshold is now Silver", 2, entity.counterTarget)
+        assertNull(entity.bronzeThreshold)
+        assertEquals(8, entity.goldThreshold)
+    }
+
+    @Test
+    fun addingMedalsBelowAPlainTarget_makesTheTargetGold() = runBlocking {
+        val id = create("Read", target = 10)
+
+        val result = repository.update(id, "Read", null, AccentSwatch.SKY, target = 10, tiers = TierLadder(3, 6, 10))
+
+        assertEquals(UpdateResult.Updated, result)
+        val card = repository.observePeriod(PeriodType.DAILY).first().single()
+        assertEquals(10, card.target)
+        assertEquals(TierLadder(3, 6, 10), card.tiers)
+    }
+
+    @Test
+    fun loweringSilverMidPeriod_appliesToTheOpenPeriodAtOnce() = runBlocking {
+        val id = create("Push-ups", tiers = TierLadder(bronze = null, silver = 4, gold = 8))
+        repeat(2) { repository.increment(id) } // 2 taps: below Silver 4, no streak yet
+
+        repository.update(id, "Push-ups", null, AccentSwatch.SKY, target = 8, tiers = TierLadder(null, 2, 8))
+
+        val card = repository.observePeriod(PeriodType.DAILY).first().single()
+        assertEquals(Tier.SILVER, card.tierReached)
+        assertEquals(1, card.currentStreak)
+        assertFalse("still not done: Gold is 8", card.isDone)
     }
 
     @Test

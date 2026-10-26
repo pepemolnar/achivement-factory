@@ -169,7 +169,6 @@ fun CreateAchievementScreen(
                     goldInput = uiState.goldInput,
                     tierError = uiState.tierError ?: uiState.thresholdError.takeIf { uiState.tiersEnabled },
                     targetError = uiState.thresholdError.takeIf { !uiState.tiersEnabled },
-                    ladderLocked = uiState.ladderLocked,
                     onTiersEnabledChange = onTiersEnabledChange,
                     onBronzeChange = onBronzeChange,
                     onSilverChange = onSilverChange,

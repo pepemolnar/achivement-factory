@@ -20,11 +20,12 @@ ACH-03 – ACH-09.
   Tested on the JVM (`MigrationOneToTwoTest`: a hand-built v1 file from the exact `1.json` SQL,
   populated, opened through Room — which validates the result) and in `MigrationTest` via
   `runMigrationsAndValidate`. `app/schemas/.../2.json` must be committed (SchemaExportTest).
-- **"Never easier" is one pure rule**, `domain/edit/ThresholdChangeRule`, used by the form (to explain)
-  and by `AchievementRepository.update` inside its transaction (to enforce). Targets and medals may
-  only go up; medals and ladders can't be removed; a medal can be added only if the streak threshold
-  doesn't drop (i.e. not below the current lowest); a plain achievement may gain a ladder whose lowest
-  medal is ≥ the old target. Period type is not editable at all (not even a parameter).
+- **The edit rule is one pure function**, `domain/edit/ThresholdChangeRule`, used by the form (to
+  explain) and by `AchievementRepository.update` inside its transaction (to enforce). *Revised by the
+  owner on 2026-10-26 after using it:* the target is always Gold, and only it may never go down;
+  Bronze/Silver are free below it (add, lower, raise, remove), and medals can be switched off (the
+  target stays at the Gold number). The create form carries the target into Gold when medals are
+  switched on, and back when they're switched off. Period type is not editable at all.
 - **New thresholds apply to the open period.** Raising them re-snapshots the current period's
   `done`/`tierReached` from its existing count and reconciles the streak in the same transaction —
   raising today's target past today's count makes today "not done yet". Closed periods never change.

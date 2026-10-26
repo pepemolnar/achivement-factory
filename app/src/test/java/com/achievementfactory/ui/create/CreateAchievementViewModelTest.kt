@@ -432,4 +432,30 @@ class CreateAchievementViewModelTest {
 
         coVerify(exactly = 1) { todos.create("Call mum", PeriodType.DAILY) }
     }
+
+    @Test
+    fun switchingMedalsOn_prefillsGoldWithTheTarget_andOffCarriesGoldBack() {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onTargetChange("10")
+
+        viewModel.onTiersEnabledChange(true)
+        assertEquals("10", viewModel.uiState.value.goldInput)
+
+        viewModel.onGoldChange("12")
+        viewModel.onTiersEnabledChange(false)
+        assertEquals("12", viewModel.uiState.value.targetInput)
+    }
+
+    @Test
+    fun switchingMedalsOn_keepsAGoldTheUserAlreadyTyped() {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onGoldChange("7")
+        viewModel.onTiersEnabledChange(false)
+        viewModel.onTargetChange("3")
+
+        viewModel.onTiersEnabledChange(true)
+
+        assertEquals("7", viewModel.uiState.value.goldInput)
+    }
 }

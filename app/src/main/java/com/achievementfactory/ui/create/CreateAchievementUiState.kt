@@ -42,8 +42,6 @@ data class CreateAchievementUiState(
     val editingId: Long? = null,
     /** True while edit mode loads the achievement; the form is not shown until it is false. */
     val loading: Boolean = false,
-    /** Edit mode only: the achievement already has medals, so the ladder can't be switched off. */
-    val ladderLocked: Boolean = false,
     /** Edit mode only: why the threshold change was refused (it would make things easier). */
     val thresholdError: String? = null,
 ) {

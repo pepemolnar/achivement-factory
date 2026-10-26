@@ -42,16 +42,10 @@ internal fun TierLadderError.message(): String = when (this) {
     TierLadderError.NOT_INCREASING -> "Each medal needs a higher count than the one below it."
 }
 
-/** Why an edit's thresholds were refused, in the owner's words, quoting the old values. */
-internal fun ThresholdChangeError.message(original: AchievementDefinition): String = when (this) {
-    ThresholdChangeError.TargetLowered ->
-        "The target can only go up — it's ${original.target} now. A lower one would make the streak easier."
-    is ThresholdChangeError.TierLowered ->
-        "${tier.displayName} can't go below ${original.tiers?.thresholdOf(tier)}."
-    is ThresholdChangeError.TierRemoved -> "${tier.displayName} can't be removed once it's set."
-    ThresholdChangeError.LadderRemoved -> "Medal tiers can't be turned off once they're set."
-    ThresholdChangeError.StreakMadeEasier ->
-        "That would make the streak easier to keep — the lowest medal must stay at ${original.target} or more."
+/** Why an edit's thresholds were refused, quoting the value it may not go below. */
+internal fun ThresholdChangeError.message(): String = when (this) {
+    is ThresholdChangeError.DoneLowered ->
+        "The target (Gold, when medals are on) can only go up — it's $previous now."
 }
 
 /**
@@ -104,6 +98,9 @@ class CreateAchievementViewModel(
             }
             original = definition
             val tiers = definition.tiers
+            // The form's target is always the done threshold — Gold when there are medals (the
+            // stored counterTarget is the streak threshold then, which the form never shows).
+            val doneThreshold = tiers?.completeThreshold ?: definition.target
             _uiState.update {
                 it.copy(
                     loading = false,
@@ -111,13 +108,12 @@ class CreateAchievementViewModel(
                     icon = definition.icon,
                     accent = definition.accent,
                     periodType = definition.periodType,
-                    targetInput = definition.target.toString(),
+                    targetInput = doneThreshold.toString(),
                     tiersEnabled = tiers != null,
                     bronzeInput = tiers?.bronze?.toString() ?: "",
                     silverInput = tiers?.silver?.toString() ?: "",
                     goldInput = tiers?.gold?.toString() ?: "",
-                    ladderLocked = tiers != null,
-                    advancedExpanded = tiers != null || definition.target > 1,
+                    advancedExpanded = tiers != null || doneThreshold > 1,
                 )
             }
         }
@@ -169,9 +165,21 @@ class CreateAchievementViewModel(
         _uiState.update { it.copy(advancedExpanded = !it.advancedExpanded) }
     }
 
+    /**
+     * Switching medals on carries the target over as Gold; switching them off carries Gold back as
+     * the target — the target and Gold are the same number by definition (TIER-06). A value the
+     * user already typed into the field being filled is kept.
+     */
     fun onTiersEnabledChange(enabled: Boolean) {
-        if (_uiState.value.ladderLocked && !enabled) return
-        _uiState.update { it.copy(tiersEnabled = enabled, tierError = null, thresholdError = null) }
+        _uiState.update {
+            it.copy(
+                tiersEnabled = enabled,
+                goldInput = if (enabled && it.goldInput.isBlank()) it.targetInput else it.goldInput,
+                targetInput = if (!enabled && it.goldInput.isNotBlank()) it.goldInput else it.targetInput,
+                tierError = null,
+                thresholdError = null,
+            )
+        }
     }
 
     /** Same raw-text, digits-only, 3-digit rule as [onTargetChange]; a cleared field is "no Bronze". */
@@ -241,7 +249,7 @@ class CreateAchievementViewModel(
         if (editing != null) {
             val refusal = ThresholdChangeRule.check(editing.target, editing.tiers, current.target, ladder)
             if (refusal != null) {
-                _uiState.update { it.copy(thresholdError = refusal.message(editing), advancedExpanded = true) }
+                _uiState.update { it.copy(thresholdError = refusal.message(), advancedExpanded = true) }
                 return
             }
         }
@@ -255,7 +263,7 @@ class CreateAchievementViewModel(
                         UpdateResult.Updated -> _uiState.update { it.copy(saved = true) }
                         UpdateResult.NotFound -> _uiState.update { it.copy(saveError = NOT_FOUND_ERROR) }
                         is UpdateResult.Refused -> _uiState.update {
-                            it.copy(thresholdError = result.error.message(editing), advancedExpanded = true)
+                            it.copy(thresholdError = result.error.message(), advancedExpanded = true)
                         }
                     }
                     return@launch
