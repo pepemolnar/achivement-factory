@@ -90,10 +90,11 @@ class AchievementRepository(
     /**
      * Creates a new achievement with zeroed streaks. Returns its id.
      *
-     * When [tiers] is given, its [TierLadder.doneThreshold] — the lowest configured tier — is what
-     * gets stored as `counterTarget`, and [target] is ignored (TIER-06). Storing the done
-     * threshold in the existing column is what keeps the `done` SQL in [ProgressDao] unchanged
-     * for tiered achievements.
+     * When [tiers] is given, its [TierLadder.streakThreshold] — the lowest configured tier — is what
+     * gets stored as `counterTarget`, and [target] is ignored. For a laddered achievement the
+     * progress row's `done` column therefore means "this period counts toward the streak", which
+     * keeps the `done` SQL in [ProgressDao] and the streak walk unchanged. Whether the card is
+     * *done* (Gold) is decided on read, from the snapshotted `tierReached` (TIER-06).
      */
     suspend fun create(
         name: String,
@@ -108,7 +109,7 @@ class AchievementRepository(
             periodType = periodType.name,
             icon = icon,
             accentSwatch = accent.name,
-            counterTarget = tiers?.doneThreshold ?: target,
+            counterTarget = tiers?.streakThreshold ?: target,
             bronzeThreshold = tiers?.bronze,
             silverThreshold = tiers?.silver,
             goldThreshold = tiers?.gold,
@@ -159,23 +160,25 @@ class AchievementRepository(
             val periodType = periodTypeOf(achievement) ?: return@withTransaction null
             val currentKey = currentPeriodProvider.current(periodType).value
             val ladder = achievement.ladder()
-            val target = ladder?.doneThreshold ?: achievement.counterTarget
+            val streakTarget = ladder?.streakThreshold ?: achievement.counterTarget
+            val completeTarget = ladder?.completeThreshold ?: achievement.counterTarget
 
             val newCount = progressDao.incrementAndRead(
                 achievementId = achievementId,
                 periodKey = currentKey.value,
-                target = target,
+                target = streakTarget,
                 bronze = ladder?.bronze,
                 silver = ladder?.silver,
                 gold = ladder?.gold,
                 epochDay = clock.epochDay(),
             )
-            val isDone = newCount >= target
             val previousCount = newCount - 1
-            val justCompleted = isDone && previousCount < target
+            val isDone = newCount >= completeTarget
+            val justCompleted = isDone && previousCount < completeTarget
+            val streakSecured = newCount >= streakTarget && previousCount < streakTarget
             val previousTier = ladder?.tierFor(previousCount)
             val newTier = ladder?.tierFor(newCount)
-            val tierUpgraded = previousTier != null && newTier != null && newTier > previousTier
+            val tierUpgraded = !justCompleted && newTier != null && newTier != previousTier
 
             reconcileStreaks.runFor(achievementId, currentKey, force = true, keyPeriodType = periodType)
             val newStreak = achievementDao.getById(achievementId)?.currentStreak ?: 0
@@ -187,6 +190,7 @@ class AchievementRepository(
                 undoToken = UndoToken(achievementId, currentKey, newCount),
                 tierReached = newTier,
                 tierUpgraded = tierUpgraded,
+                streakSecured = streakSecured,
             )
         }
     }
@@ -216,7 +220,7 @@ class AchievementRepository(
                 achievementId = token.achievementId,
                 periodKey = currentKey.value,
                 expectedCount = token.expectedCount,
-                target = ladder?.doneThreshold ?: achievement.counterTarget,
+                target = ladder?.streakThreshold ?: achievement.counterTarget,
                 bronze = ladder?.bronze,
                 silver = ladder?.silver,
                 gold = ladder?.gold,
@@ -254,15 +258,32 @@ class AchievementRepository(
     private fun AchievementEntity.ladder(): TierLadder? =
         TierLadder.fromStoredColumns(bronzeThreshold, silverThreshold, goldThreshold)
 
+    /** What the card's ring fills toward: Gold for a laddered achievement, else the target. */
+    private fun AchievementEntity.displayTarget(): Int = ladder()?.completeThreshold ?: counterTarget
+
+    /**
+     * Whether the achievement is *done* for the period. With no ladder that is the row's
+     * snapshotted `done` column, exactly as in Phase 1. With a ladder `done` only means "counts
+     * toward the streak" (the lowest tier), so done is read from the snapshotted `tierReached`
+     * instead — Gold and nothing else. Both are snapshots written with the count, so a closed
+     * period's result stays immutable either way (TRACK-10).
+     */
+    private fun AchievementEntity.isDoneFor(progress: ProgressEntity?): Boolean =
+        if (ladder() != null) {
+            Tier.fromStored(progress?.tierReached) == Tier.GOLD
+        } else {
+            progress?.done ?: false
+        }
+
     private fun AchievementEntity.toTracked(periodType: PeriodType, progress: ProgressEntity?) =
         TrackedAchievement(
             id = id,
             name = name,
             icon = icon,
             accent = swatchOf(accentSwatch),
-            target = counterTarget,
+            target = displayTarget(),
             count = progress?.count ?: 0,
-            isDone = progress?.done ?: false,
+            isDone = isDoneFor(progress),
             currentStreak = currentStreak,
             bestStreak = bestStreak,
             periodType = periodType,
@@ -276,9 +297,9 @@ class AchievementRepository(
             name = name,
             icon = icon,
             accent = swatchOf(accentSwatch),
-            target = counterTarget,
+            target = displayTarget(),
             periodCount = progress?.count ?: 0,
-            isDone = progress?.done ?: false,
+            isDone = isDoneFor(progress),
             currentStreak = currentStreak,
             bestStreak = bestStreak,
             periodType = periodType,

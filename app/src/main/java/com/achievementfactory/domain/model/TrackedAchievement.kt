@@ -13,7 +13,9 @@ import com.achievementfactory.period.PeriodType
  * [count], [isDone] and [tierReached] describe the *current* period of [periodType] only.
  * [tierReached] is read from the progress row's snapshotted column, never recomputed from
  * [tiers], for the same immutability reason [isDone] is (TRACK-10). [tiers] is null for an
- * achievement with no ladder; when present, [target] equals [TierLadder.doneThreshold] (TIER-06).
+ * achievement with no ladder; when present, [target] is [TierLadder.completeThreshold] (Gold) and
+ * [isDone] means Gold was reached — reaching only the lowest tier keeps the streak alive but does
+ * not make the card done (TIER-06).
  */
 data class TrackedAchievement(
     val id: Long,

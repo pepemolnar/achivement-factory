@@ -122,20 +122,32 @@ class PeriodViewModel(
             // tap can no longer wedge behind a full buffer waiting for a collector to appear.
             _undoRequests.tryEmit(outcome.undoToken)
             val tierReached = outcome.tierReached
+            // The flame reacts only on the tap that actually moved the streak — for a ladder that is
+            // the lowest medal, not Gold — and "first flame" only ever on that tap.
+            val isFirstFlame = outcome.streakSecured && outcome.newStreak == 1
             if (outcome.justCompleted) {
                 holdBack(id)
                 _celebrations.tryEmit(
                     CelebrationEvent.Completed(
                         achievementId = id,
                         newStreak = outcome.newStreak,
-                        isFirstFlame = outcome.newStreak == 1,
+                        isFirstFlame = isFirstFlame,
                         tier = tierReached,
+                        ticksStreak = outcome.streakSecured,
                     ),
                 )
             } else if (outcome.tierUpgraded && tierReached != null) {
-                // No hold-back: an upgrade happens on a card that is already done, so it is
-                // already in (or already headed for) the Done section — there is no sink to delay.
-                _celebrations.tryEmit(CelebrationEvent.TierUpgraded(achievementId = id, tier = tierReached))
+                // No hold-back: a medal below Gold does not make the card done, so it is not
+                // moving into the Done section — there is no sink to delay.
+                _celebrations.tryEmit(
+                    CelebrationEvent.TierUpgraded(
+                        achievementId = id,
+                        tier = tierReached,
+                        ticksStreak = outcome.streakSecured,
+                        newStreak = outcome.newStreak,
+                        isFirstFlame = isFirstFlame,
+                    ),
+                )
             }
         }
     }

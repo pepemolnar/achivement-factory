@@ -8,10 +8,16 @@ package com.achievementfactory.domain.tier
  * configured tier up to Gold (TIER-05). The constructor enforces both, so holding a [TierLadder]
  * at all is proof it is valid — use [validate] to get a typed reason instead of an exception.
  *
- * The lowest configured tier's threshold is the achievement's done threshold ([doneThreshold],
- * TIER-06); every tier above it is an upgrade, never a gate. That is why the repository writes
- * [doneThreshold] into `achievements.counterTarget` at creation: the Phase 1 `done` SQL
- * (`count >= target`) then stays correct for tiered achievements with no change at all.
+ * Two thresholds matter, and they are deliberately different (TIER-06, as revised 2026-10-26):
+ *
+ * - [streakThreshold] — the lowest configured tier. Reaching it is enough for the period to count
+ *   toward the streak. The repository writes it into `achievements.counterTarget` at creation,
+ *   and the progress row's `done` column (`count >= target`) therefore means "this period counts
+ *   toward the streak" for laddered achievements — which is why the Phase 1 SQL and the streak
+ *   walk need no change at all.
+ * - [completeThreshold] — Gold. Only reaching Gold makes the achievement *done* for the period in
+ *   the UI: the card closes its ring and moves into the Done section. Bronze and Silver are
+ *   milestones on the way, each celebrated as a tier upgrade.
  *
  * Pure Kotlin — no Android or Room import — so every rule here is covered by plain JUnit tests.
  */
@@ -33,11 +39,14 @@ data class TierLadder(
             add(Tier.GOLD)
         }
 
-    /** The lowest configured tier — the one whose threshold means "done" (TIER-06). */
+    /** The lowest configured tier — the one whose threshold keeps the streak alive. */
     val lowestTier: Tier get() = tiers.first()
 
-    /** The count at which the achievement counts as done for the period (TIER-06). */
-    val doneThreshold: Int get() = bronze ?: silver ?: gold
+    /** The count at which the period counts toward the streak: the lowest configured tier. */
+    val streakThreshold: Int get() = bronze ?: silver ?: gold
+
+    /** The count at which the achievement is done for the period: always Gold. */
+    val completeThreshold: Int get() = gold
 
     fun thresholdOf(tier: Tier): Int? = when (tier) {
         Tier.BRONZE -> bronze
@@ -45,7 +54,7 @@ data class TierLadder(
         Tier.GOLD -> gold
     }
 
-    /** The highest tier [count] reaches, or null when it is below [doneThreshold]. */
+    /** The highest tier [count] reaches, or null when it is below [streakThreshold]. */
     fun tierFor(count: Int): Tier? = when {
         count >= gold -> Tier.GOLD
         silver != null && count >= silver -> Tier.SILVER

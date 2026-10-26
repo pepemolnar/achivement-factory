@@ -50,8 +50,8 @@ import com.achievementfactory.ui.theme.color
  * no stepper, no swipe gesture, so one tap is always exactly +1 regardless of the achievement's
  * target. [onLongPress] opens the detail screen (D-03). [StreakFlameBadge] anchors to the
  * top-end corner of the icon/ring cluster, overlapping it by ~4dp, and composes nothing at
- * streak 0 (D-07, D-08). A done card stays tappable, which is how a laddered achievement is
- * pushed past its done threshold into higher tiers.
+ * streak 0 (D-07, D-08). For a laddered achievement the card is done only at Gold; Bronze and
+ * Silver keep it in the outstanding list with its ring still open and a medal badge showing.
  *
  * Under the name, a laddered achievement shows its progress toward the *next* tier and a
  * [TierBadge] for the tier reached this period (TIER-07); a no-ladder achievement keeps the
@@ -175,22 +175,27 @@ private fun CardBody(
                     colors = burstColors,
                     modifier = Modifier.matchParentSize(),
                 )
+                // A medal below Gold does not complete the card: keep the open resting ring and the
+                // glyph, and let only the pulse, badge and burst play over them.
+                val isUpgrade = celebration is CelebrationEvent.TierUpgraded
+                val ringProgress = if (isUpgrade) animatedRestingProgress else visual.ringProgress
+                val checkmarkProgress = if (isUpgrade) 0f else visual.checkmarkProgress
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.scale(visual.checkScale),
                 ) {
                     ProgressRing(
-                        progress = visual.ringProgress,
+                        progress = ringProgress,
                         accent = accentColor,
-                        checkmarkProgress = visual.checkmarkProgress,
+                        checkmarkProgress = checkmarkProgress,
                     )
-                    if (visual.checkmarkProgress < 1f) {
-                        Box(modifier = Modifier.graphicsLayer { alpha = 1f - visual.checkmarkProgress }) {
+                    if (checkmarkProgress < 1f) {
+                        Box(modifier = Modifier.graphicsLayer { alpha = 1f - checkmarkProgress }) {
                             AchievementGlyph(icon = achievement.icon, name = achievement.name, accent = accentColor)
                         }
                     }
                 }
-                val streak = (celebration as? CelebrationEvent.Completed)?.newStreak ?: achievement.currentStreak
+                val streak = if (celebration.ticksStreak) celebration.newStreak else achievement.currentStreak
                 StreakFlameBadge(
                     streak = streak,
                     accent = accentColor,

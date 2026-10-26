@@ -12,8 +12,8 @@ import com.achievementfactory.period.PeriodType
  * successful save, driving the screen's single pop-back-stack navigation.
  *
  * [periodType] starts as the tab the FAB was pressed on. The tier ladder lives behind
- * [tiersEnabled] inside the advanced area (D-19); while it is on, the ladder's lowest tier *is*
- * the done threshold (TIER-06), so the plain counter target is not used.
+ * [tiersEnabled] inside the advanced area (D-19); while it is on, Gold is the done threshold and
+ * the lowest tier keeps the streak (TIER-06), so the plain counter target is not used.
  *
  * [nameError], [tierError] and [saveError] are deliberately separate fields: the first two are
  * validation results about specific fields and belong under them, the last is "the database write

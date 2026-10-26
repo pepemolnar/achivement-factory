@@ -12,11 +12,19 @@ import com.achievementfactory.domain.tier.Tier
  * one-shot completion event reads `isFirstFlame` off, rather than re-deriving it from a
  * separately-collected UI state snapshot that could race the same write.
  *
- * [tierReached] is the tier the resulting count reaches (null for an achievement with no ladder,
- * or below its done threshold). [tierUpgraded] is true only on the exact increment that crosses
- * from one tier into a *higher* one (CELEB-02) — never on the completing tap itself, which is
- * [justCompleted]'s edge, and never on a repeat tap within the same tier. Like [justCompleted],
- * both are derived from this call's own `newCount`, never from a second read.
+ * For a laddered achievement "done" means Gold, while the streak is kept by the lowest tier, so
+ * the two edges come apart:
+ *
+ * - [justCompleted] — this increment crossed into *done* (Gold, or the plain target with no
+ *   ladder). The card's ring closes and it sinks into Done.
+ * - [streakSecured] — this increment crossed the threshold that makes the period count toward the
+ *   streak (the lowest tier, or the plain target). It defaults to [justCompleted] because, with no
+ *   ladder or a Gold-only ladder, the two are the same tap.
+ * - [tierUpgraded] — this increment reached a new, higher tier *without* completing: Bronze or
+ *   Silver on a Gold-topped ladder (CELEB-02). Never true on the same tap as [justCompleted].
+ *
+ * [tierReached] is the tier the resulting count reaches (null with no ladder, or below the lowest
+ * tier). All of these are derived from this call's own `newCount`, never from a second read.
  */
 data class IncrementOutcome(
     val newCount: Int,
@@ -26,4 +34,5 @@ data class IncrementOutcome(
     val undoToken: UndoToken,
     val tierReached: Tier? = null,
     val tierUpgraded: Boolean = false,
+    val streakSecured: Boolean = justCompleted,
 )

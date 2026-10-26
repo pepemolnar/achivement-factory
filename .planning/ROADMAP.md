@@ -81,7 +81,7 @@ Plans:
 
   1. User can create achievements on a weekly (Monday–Sunday) or monthly (calendar month) period, in addition to daily, and switch between three tabs — Daily, Weekly, Monthly — via the app's tab navigation to see each period's items.
   2. User can attach a Bronze/Silver/Gold tier ladder to an achievement, setting increasing thresholds per tier; the app accepts only valid downward-filling sets (Gold-only, Silver+Gold, or Bronze+Silver+Gold) and rejects any set that omits Gold or skips a level.
-  3. The lowest configured tier's threshold is the achievement's done threshold, the achievement's card shows the tier reached in the current period, and the app records the highest tier reached each completed period.
+  3. A laddered achievement is done only at Gold, while reaching its lowest configured tier keeps the streak; the achievement's card shows the tier reached in the current period, and the app records the highest tier reached each completed period. *(Revised 2026-10-26.)*
   4. Completing an achievement fires a celebration whose intensity scales with the tier reached, and crossing into a higher tier within the same period fires the corresponding upgraded animation.
 
 **Plans**: TBD

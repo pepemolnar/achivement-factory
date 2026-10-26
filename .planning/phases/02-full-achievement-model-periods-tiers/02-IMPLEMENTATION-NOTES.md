@@ -10,16 +10,18 @@ Requirements covered: PERIOD-02, PERIOD-03, NAV-01, TIER-02 – TIER-07, TRACK-0
 
 - **No schema change, no migration.** Schema v1 already carried `bronze/silver/goldThreshold` and
   `progress.tierReached`. `APP_DATABASE_VERSION` stays 1.
-- **Done threshold = lowest tier, stored in `counterTarget`** at creation (TIER-06), so the Phase 1
-  `done = count >= target` SQL is unchanged. Repository writes still derive the target from the
-  ladder when one exists, falling back to `counterTarget`.
+- **Done = Gold; streak = lowest tier** (TIER-06, revised by the owner on 2026-10-26 after using the
+  build). The lowest tier is stored in `counterTarget`, so the progress row's `done` column keeps
+  meaning "counts toward the streak" and the Phase 1 SQL and streak walk are unchanged — no
+  migration, existing data stays valid. Card/detail `isDone` for a laddered achievement is read
+  from the snapshotted `tierReached == GOLD`, and the card's ring fills toward Gold.
+- **Three edges per tap:** `justCompleted` (reached Gold / plain target → `Completed`, card sinks),
+  `streakSecured` (reached the lowest tier → flame ticks), `tierUpgraded` (Bronze/Silver below Gold
+  → `TierUpgraded`, ring stays open, no hold-back). Gold after a lower medal does not re-tick the
+  flame.
 - **`tierReached` is snapshotted in the same atomic UPDATE** as the count (increment and undo), via a
   `CASE` over nullable thresholds — never re-derived on read (TRACK-09/TRACK-10). Undo within the
   open period lowers it with the count.
-- **Edges, not state.** `IncrementOutcome` gains `tierReached` and `tierUpgraded`, both derived
-  from `newCount` alone. Reaching the lowest tier is the *completion* edge (`Completed(tier = …)`);
-  each later tier crossing is a separate `TierUpgraded` event. They never fire on the same tap.
-  Upgrades do not hold the card back from Done.
 - **Ladder validation lives in `domain/tier/TierLadder`** (pure Kotlin); the constructor refuses
   invalid ladders, `validate` returns a typed `TierLadderError`, and stored rows are read
   tolerantly (`fromStoredColumns` → null rather than throwing out of a read flow).

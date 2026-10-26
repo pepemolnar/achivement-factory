@@ -12,24 +12,25 @@ class TierLadderTest {
         (TierLadder.validate(bronze, silver, gold) as? TierLadderValidation.Invalid)?.error
 
     @Test
-    fun goldOnly_isValid_andGoldIsTheDoneThreshold() {
+    fun goldOnly_isValid_andGoldIsBothThresholds() {
         val ladder = TierLadder(bronze = null, silver = null, gold = 5)
-        assertEquals(5, ladder.doneThreshold)
+        assertEquals(5, ladder.streakThreshold)
         assertEquals(Tier.GOLD, ladder.lowestTier)
         assertEquals(listOf(Tier.GOLD), ladder.tiers)
     }
 
     @Test
-    fun silverAndGold_isValid_andSilverIsTheDoneThreshold() {
+    fun silverAndGold_isValid_andSilverIsTheStreakThreshold() {
         val ladder = TierLadder(bronze = null, silver = 3, gold = 5)
-        assertEquals(3, ladder.doneThreshold)
+        assertEquals(3, ladder.streakThreshold)
         assertEquals(Tier.SILVER, ladder.lowestTier)
     }
 
     @Test
-    fun fullLadder_isValid_andBronzeIsTheDoneThreshold() {
+    fun fullLadder_isValid_bronzeKeepsTheStreak_andGoldCompletes() {
         val ladder = TierLadder(bronze = 1, silver = 3, gold = 5)
-        assertEquals(1, ladder.doneThreshold)
+        assertEquals(1, ladder.streakThreshold)
+        assertEquals(5, ladder.completeThreshold)
         assertEquals(listOf(Tier.BRONZE, Tier.SILVER, Tier.GOLD), ladder.tiers)
     }
 

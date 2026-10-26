@@ -39,9 +39,14 @@ data class CelebrationVisualState(
  * burst fires — and the streak flame reacts at [MotionSpecs.FLAME_DELAY_MS], with the
  * achievement's first-ever flame playing the bouncier unlock treatment (D-08, D-22).
  *
- * For [CelebrationEvent.TierUpgraded] (CELEB-02): the card is already done, so the ring and check
- * start settled and the flame is left alone — only the check pulse, the badge pop (into the new
- * tier) and the burst play, starting at [MotionSpecs.TIER_UPGRADE_DELAY_MS].
+ * For [CelebrationEvent.TierUpgraded] (CELEB-02): a medal below Gold, so the card is *not* done —
+ * the ring is not closed and no checkmark is drawn (the caller keeps rendering the resting ring and
+ * glyph). Only the icon pulse, the badge pop into the new tier and the burst play, starting at
+ * [MotionSpecs.TIER_UPGRADE_DELAY_MS].
+ *
+ * The flame stage runs for either event exactly when [CelebrationEvent.ticksStreak] says this tap
+ * moved the streak — the completing tap with no ladder, the lowest medal on a ladder — and never
+ * otherwise, so Gold after Bronze does not tick a flame that already ticked.
  *
  * Intensity is never a separate code path (CELEB-01): every peak, particle count and duration is
  * read from [MotionSpecs]'s tier table using [CelebrationEvent.tier], so Bronze, Silver and Gold
@@ -65,13 +70,13 @@ fun CompletionCelebration(
     content: @Composable (CelebrationVisualState) -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
-    val completed = event as? CelebrationEvent.Completed
-    val startsSettled = event is CelebrationEvent.TierUpgraded
+    val isUpgrade = event is CelebrationEvent.TierUpgraded
+    val ticksStreak = event?.ticksStreak == true
 
-    val ringProgress = remember(event) { Animatable(if (startsSettled) 1f else 0f) }
-    val checkmarkProgress = remember(event) { Animatable(if (startsSettled) 1f else 0f) }
+    val ringProgress = remember(event) { Animatable(0f) }
+    val checkmarkProgress = remember(event) { Animatable(0f) }
     val checkScale = remember(event) { Animatable(1f) }
-    val flameScale = remember(event) { Animatable(if (completed?.isFirstFlame == true) 0f else 1f) }
+    val flameScale = remember(event) { Animatable(if (ticksStreak && event?.isFirstFlame == true) 0f else 1f) }
     val flameFlash = remember(event) { Animatable(0f) }
     val burstProgress = remember(event) { Animatable(0f) }
     val tierBadgeScale = remember(event) { Animatable(if (event?.tier != null) 0f else 1f) }
@@ -86,13 +91,13 @@ fun CompletionCelebration(
         val badgeSpec = MotionSpecs.resolve(MotionSpecs.tierBadgePop(tier), reducedMotion)
         val pulsePeak = MotionSpecs.checkPulsePeak(tier)
         val accentDelay = MotionSpecs.resolveDelay(
-            if (startsSettled) MotionSpecs.TIER_UPGRADE_DELAY_MS else MotionSpecs.CHECK_MORPH_DELAY_MS,
+            if (isUpgrade) MotionSpecs.TIER_UPGRADE_DELAY_MS else MotionSpecs.CHECK_MORPH_DELAY_MS,
             reducedMotion,
         )
         val flameDelay = MotionSpecs.resolveDelay(MotionSpecs.FLAME_DELAY_MS, reducedMotion)
 
         coroutineScope {
-            if (!startsSettled) {
+            if (!isUpgrade) {
                 launch {
                     ringProgress.animateTo(1f, ringSpec)
                     onStage(CelebrationStage.RING_CLOSED)
@@ -110,16 +115,16 @@ fun CompletionCelebration(
                 if (MotionSpecs.burstParticleCount(tier) > 0) {
                     launch { burstProgress.animateTo(1f, burstSpec) }
                 }
-                checkmarkProgress.animateTo(1f, checkSpec)
+                if (!isUpgrade) checkmarkProgress.animateTo(1f, checkSpec)
                 checkScale.animateTo(pulsePeak, checkSpec)
                 checkScale.animateTo(1f, checkSpec)
                 onStage(CelebrationStage.CHECK_MORPHED)
                 onCelebrationEvent(CelebrationStage.CHECK_MORPHED)
             }
-            if (completed != null) {
+            if (ticksStreak) {
                 launch {
                     delay(flameDelay)
-                    if (completed.isFirstFlame) {
+                    if (event.isFirstFlame) {
                         val unlockSpec = MotionSpecs.resolve(MotionSpecs.flameUnlock, reducedMotion)
                         launch {
                             flameFlash.animateTo(1f, unlockSpec)

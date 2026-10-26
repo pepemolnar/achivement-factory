@@ -32,9 +32,10 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Phase 2's data-layer behaviour, end to end against an in-memory Room database under
  * Robolectric: weekly/monthly achievements key their progress to the Monday / calendar month
- * (PERIOD-02, PERIOD-03), their streaks walk in their own unit, and a tier ladder's lowest tier
- * is the done threshold (TIER-06) with the highest tier reached snapshotted per period
- * (TRACK-09) and reported as one-shot edges on [com.achievementfactory.domain.model.IncrementOutcome].
+ * (PERIOD-02, PERIOD-03), their streaks walk in their own unit, and a tier ladder is done only at
+ * Gold while its lowest tier keeps the streak (TIER-06), with the highest tier reached snapshotted
+ * per period (TRACK-09) and reported as one-shot edges on
+ * [com.achievementfactory.domain.model.IncrementOutcome].
  */
 @RunWith(RobolectricTestRunner::class)
 class PeriodsAndTiersRepositoryTest {
@@ -222,7 +223,7 @@ class PeriodsAndTiersRepositoryTest {
     // --- Tiers ---------------------------------------------------------------------------------
 
     @Test
-    fun create_withALadder_storesTheLowestTierAsTheDoneThreshold() = runBlocking {
+    fun create_withALadder_storesTheLowestTierAsTheStreakThreshold() = runBlocking {
         val id = create(target = 99, tiers = TierLadder(bronze = null, silver = 2, gold = 4))
 
         val entity = database.achievementDao().getById(id)!!
@@ -233,23 +234,28 @@ class PeriodsAndTiersRepositoryTest {
     }
 
     @Test
-    fun increments_walkTheLadder_withOneCompletionEdgeAndOneUpgradeEdgePerTier() = runBlocking {
+    fun increments_walkTheLadder_streakAtTheLowestTier_upgradesBelowGold_completionAtGold() = runBlocking {
         val id = create(tiers = TierLadder(bronze = 2, silver = 3, gold = 5))
 
         val first = repository.increment(id)!!
         assertNull(first.tierReached)
         assertFalse(first.justCompleted)
         assertFalse(first.tierUpgraded)
+        assertFalse(first.streakSecured)
 
         val bronze = repository.increment(id)!!
         assertEquals(Tier.BRONZE, bronze.tierReached)
-        assertTrue("reaching the lowest tier is the completion edge", bronze.justCompleted)
-        assertFalse("the completing tap is not also an upgrade", bronze.tierUpgraded)
+        assertTrue("the lowest tier secures the streak", bronze.streakSecured)
+        assertEquals(1, bronze.newStreak)
+        assertTrue("Bronze is a medal upgrade", bronze.tierUpgraded)
+        assertFalse("Bronze is not done", bronze.justCompleted)
+        assertFalse(bronze.isDone)
 
         val silver = repository.increment(id)!!
         assertEquals(Tier.SILVER, silver.tierReached)
-        assertFalse(silver.justCompleted)
         assertTrue(silver.tierUpgraded)
+        assertFalse(silver.streakSecured)
+        assertFalse(silver.justCompleted)
 
         val stillSilver = repository.increment(id)!!
         assertEquals(Tier.SILVER, stillSilver.tierReached)
@@ -257,21 +263,27 @@ class PeriodsAndTiersRepositoryTest {
 
         val gold = repository.increment(id)!!
         assertEquals(Tier.GOLD, gold.tierReached)
-        assertTrue(gold.tierUpgraded)
+        assertTrue("Gold is the completion edge", gold.justCompleted)
+        assertTrue(gold.isDone)
+        assertFalse("the completing tap is not also an upgrade", gold.tierUpgraded)
+        assertFalse("the streak was already secured at Bronze", gold.streakSecured)
+        assertEquals(1, gold.newStreak)
 
         val pastGold = repository.increment(id)!!
         assertEquals(Tier.GOLD, pastGold.tierReached)
         assertFalse(pastGold.tierUpgraded)
+        assertFalse(pastGold.justCompleted)
     }
 
     @Test
-    fun goldOnlyLadder_completesAtGold_withNoSeparateUpgrade() = runBlocking {
+    fun goldOnlyLadder_completesAndSecuresTheStreakOnTheSameTap() = runBlocking {
         val id = create(tiers = TierLadder(bronze = null, silver = null, gold = 2))
 
         repository.increment(id)
         val gold = repository.increment(id)!!
 
         assertTrue(gold.justCompleted)
+        assertTrue(gold.streakSecured)
         assertFalse(gold.tierUpgraded)
         assertEquals(Tier.GOLD, gold.tierReached)
     }
@@ -285,8 +297,58 @@ class PeriodsAndTiersRepositoryTest {
         assertEquals("SILVER", database.progressDao().getFor(id, "2026-08-12")?.tierReached)
         val card = repository.observePeriod(PeriodType.DAILY).first().single()
         assertEquals(Tier.SILVER, card.tierReached)
-        assertTrue(card.isDone)
         assertEquals(TierLadder(1, 2, 3), card.tiers)
+    }
+
+    @Test
+    fun ladderedCard_isNotDoneBelowGold_butItsStreakAlreadyCounts() = runBlocking {
+        val id = create(tiers = TierLadder(bronze = 1, silver = 2, gold = 3))
+        repository.increment(id) // Bronze
+
+        val card = repository.observePeriod(PeriodType.DAILY).first().single()
+        assertFalse("only Gold makes the card done", card.isDone)
+        assertEquals(1, card.currentStreak)
+        assertEquals("the ring fills toward Gold", 3, card.target)
+    }
+
+    @Test
+    fun ladderedCard_isDoneAtGold() = runBlocking {
+        val id = create(tiers = TierLadder(bronze = 1, silver = 2, gold = 3))
+        repeat(3) { repository.increment(id) }
+
+        val card = repository.observePeriod(PeriodType.DAILY).first().single()
+        assertTrue(card.isDone)
+        assertEquals(Tier.GOLD, card.tierReached)
+        assertTrue(repository.observeDetail(id).first()!!.isDone)
+    }
+
+    @Test
+    fun undoingGold_takesTheCardOutOfDone_butKeepsTheStreak() = runBlocking {
+        val id = create(tiers = TierLadder(bronze = 1, silver = 2, gold = 3))
+        repository.increment(id)
+        repository.increment(id)
+        val gold = repository.increment(id)!!
+
+        assertTrue(repository.undo(gold.undoToken))
+
+        val card = repository.observePeriod(PeriodType.DAILY).first().single()
+        assertFalse(card.isDone)
+        assertEquals(Tier.SILVER, card.tierReached)
+        assertEquals(1, card.currentStreak)
+    }
+
+    @Test
+    fun ladderStreak_keepsGoingOnDaysThatOnlyReachedTheLowestTier() = runBlocking {
+        val id = create(tiers = TierLadder(bronze = 1, silver = 2, gold = 3))
+
+        currentDate.set(LocalDate.of(2026, 8, 10))
+        repeat(3) { repository.increment(id) } // Gold
+        currentDate.set(LocalDate.of(2026, 8, 11))
+        repository.increment(id) // Bronze only
+        currentDate.set(LocalDate.of(2026, 8, 12))
+        val today = repository.increment(id)!! // Bronze
+
+        assertEquals(3, today.newStreak)
     }
 
     @Test

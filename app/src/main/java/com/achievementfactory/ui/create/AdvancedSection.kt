@@ -30,8 +30,8 @@ import com.achievementfactory.ui.theme.color
  * Collapsed-by-default advanced area (D-19) holding the counter target and the optional
  * Bronze/Silver/Gold ladder (TIER-02). The common once-a-day habit never has to look inside this
  * section. While the ladder is on, the counter target field is replaced by the three tier fields —
- * the lowest configured tier's count is what "done" means (TIER-06), so showing both would offer
- * two competing answers to the same question.
+ * Gold's count is what "done" means and the lowest tier's count is what keeps the streak (TIER-06),
+ * so a separate target would be a third, competing answer.
  */
 @Composable
 fun AdvancedSection(
@@ -140,7 +140,7 @@ private fun TierLadderFields(
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Medal tiers", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    text = "Bronze, Silver and Gold counts. The lowest medal you set is what counts as done.",
+                    text = "Bronze, Silver and Gold counts. Gold marks it done; the lowest medal you set keeps your streak going.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

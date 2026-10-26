@@ -228,8 +228,8 @@ private fun PeriodList(
             item(key = "done-divider") {
                 DoneSectionHeader()
             }
-            // Done cards celebrate too: a laddered achievement is pushed into Silver and Gold
-            // from here, and its tier-upgrade celebration (CELEB-02) plays on this card.
+            // Done cards still accept a celebration: a completion whose hold-back ceiling expired
+            // keeps playing here after the card has moved into this section.
             items(content.done, key = { it.id }) { achievement ->
                 AchievementCard(
                     achievement = achievement,

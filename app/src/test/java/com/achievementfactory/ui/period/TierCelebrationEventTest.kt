@@ -21,14 +21,17 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
- * CELEB-01/CELEB-02 at the ViewModel edge: the completion event carries the tier reached, a
- * mid-period upgrade emits exactly one [CelebrationEvent.TierUpgraded], and both follow the same
- * zero-replay rules as Phase 1's completion event (see [CelebrationEventTest]).
+ * CELEB-01/CELEB-02 at the ViewModel edge, under the revised TIER-06 (done = Gold, streak = lowest
+ * tier): medals below Gold emit [CelebrationEvent.TierUpgraded] without holding the card back,
+ * the lowest medal ticks the streak flame, Gold emits [CelebrationEvent.Completed] without
+ * re-ticking it, and every one of these follows the same zero-replay rules as Phase 1's
+ * completion event (see [CelebrationEventTest]).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TierCelebrationEventTest {
@@ -47,17 +50,20 @@ class TierCelebrationEventTest {
 
     private fun outcome(
         newCount: Int,
+        tierReached: Tier?,
         justCompleted: Boolean = false,
-        tierReached: Tier? = null,
         tierUpgraded: Boolean = false,
+        streakSecured: Boolean = false,
+        newStreak: Int = 1,
     ) = IncrementOutcome(
         newCount = newCount,
-        isDone = tierReached != null,
+        isDone = tierReached == Tier.GOLD,
         justCompleted = justCompleted,
-        newStreak = 1,
+        newStreak = newStreak,
         undoToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-10"), expectedCount = newCount),
         tierReached = tierReached,
         tierUpgraded = tierUpgraded,
+        streakSecured = streakSecured,
     )
 
     private fun viewModelReturning(vararg outcomes: IncrementOutcome): PeriodViewModel {
@@ -68,62 +74,133 @@ class TierCelebrationEventTest {
     }
 
     @Test
-    fun completingTap_onALadder_carriesTheLowestTierIntoTheCompletedEvent() = runTest(testDispatcher) {
-        val viewModel = viewModelReturning(outcome(newCount = 2, justCompleted = true, tierReached = Tier.BRONZE))
-
-        viewModel.celebrations.test {
-            viewModel.onIncrement(1L)
-            val event = awaitItem() as CelebrationEvent.Completed
-            assertEquals(Tier.BRONZE, event.tier)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    @Test
-    fun completingTap_withNoLadder_carriesNoTier() = runTest(testDispatcher) {
-        val viewModel = viewModelReturning(outcome(newCount = 1, justCompleted = true, tierReached = null))
-
-        viewModel.celebrations.test {
-            viewModel.onIncrement(1L)
-            assertEquals(null, (awaitItem() as CelebrationEvent.Completed).tier)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    @Test
-    fun upgradeTap_emitsExactlyOneTierUpgradedEvent_forTheNewTier() = runTest(testDispatcher) {
+    fun lowestMedal_emitsATierUpgrade_thatTicksTheStreak() = runTest(testDispatcher) {
         val viewModel = viewModelReturning(
-            outcome(newCount = 3, tierReached = Tier.SILVER, tierUpgraded = true),
-            outcome(newCount = 4, tierReached = Tier.SILVER, tierUpgraded = false),
-            outcome(newCount = 5, tierReached = Tier.GOLD, tierUpgraded = true),
+            outcome(newCount = 2, tierReached = Tier.BRONZE, tierUpgraded = true, streakSecured = true, newStreak = 1),
         )
 
         viewModel.celebrations.test {
             viewModel.onIncrement(1L)
-            assertEquals(CelebrationEvent.TierUpgraded(1L, Tier.SILVER), awaitItem())
-
-            viewModel.onIncrement(1L)
-            testDispatcher.scheduler.advanceUntilIdle()
-            expectNoEvents()
-
-            viewModel.onIncrement(1L)
-            assertEquals(CelebrationEvent.TierUpgraded(1L, Tier.GOLD), awaitItem())
+            assertEquals(
+                CelebrationEvent.TierUpgraded(
+                    achievementId = 1L,
+                    tier = Tier.BRONZE,
+                    ticksStreak = true,
+                    newStreak = 1,
+                    isFirstFlame = true,
+                ),
+                awaitItem(),
+            )
             cancelAndIgnoreRemainingEvents()
         }
     }
 
     @Test
-    fun upgradeTap_doesNotHoldTheCardBackFromTheDoneSection() = runTest(testDispatcher) {
+    fun higherMedalBelowGold_emitsATierUpgrade_withoutTickingTheStreak() = runTest(testDispatcher) {
         val viewModel = viewModelReturning(outcome(newCount = 3, tierReached = Tier.SILVER, tierUpgraded = true))
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.TierUpgraded
+            assertEquals(Tier.SILVER, event.tier)
+            assertFalse(event.ticksStreak)
+            assertFalse(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun goldAfterALowerMedal_completes_withoutReTickingTheStreak() = runTest(testDispatcher) {
+        val viewModel = viewModelReturning(
+            outcome(newCount = 5, tierReached = Tier.GOLD, justCompleted = true, streakSecured = false, newStreak = 1),
+        )
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertEquals(Tier.GOLD, event.tier)
+            assertFalse(event.ticksStreak)
+            assertFalse("the first flame already played at the lowest medal", event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun goldOnlyLadder_completesAndTicksTheStreakOnTheSameTap() = runTest(testDispatcher) {
+        val viewModel = viewModelReturning(
+            outcome(newCount = 2, tierReached = Tier.GOLD, justCompleted = true, streakSecured = true, newStreak = 1),
+        )
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertTrue(event.ticksStreak)
+            assertTrue(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun noLadderCompletion_keepsPhase1Behaviour_noTier_andTicksTheStreak() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observePeriod(PeriodType.DAILY) } returns flowOf(emptyList())
+        coEvery { repository.increment(1L) } returns IncrementOutcome(
+            newCount = 1,
+            isDone = true,
+            justCompleted = true,
+            newStreak = 1,
+            undoToken = UndoToken(1L, PeriodKey("2026-08-12"), 1),
+        )
+        val viewModel = PeriodViewModel(repository)
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            val event = awaitItem() as CelebrationEvent.Completed
+            assertEquals(null, event.tier)
+            assertTrue(event.ticksStreak)
+            assertTrue(event.isFirstFlame)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun repeatTapWithinTheSameMedal_emitsNothing() = runTest(testDispatcher) {
+        val viewModel = viewModelReturning(outcome(newCount = 4, tierReached = Tier.SILVER))
+
+        viewModel.celebrations.test {
+            viewModel.onIncrement(1L)
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun medalBelowGold_doesNotHoldTheCardBack() = runTest(testDispatcher) {
+        val viewModel = viewModelReturning(
+            outcome(newCount = 2, tierReached = Tier.BRONZE, tierUpgraded = true, streakSecured = true),
+        )
 
         viewModel.uiState.test {
             assertEquals(PeriodUiState.Loading, awaitItem())
-            val before = awaitItem() as PeriodUiState.Content
-            assertTrue(before.heldBackIds.isEmpty())
+            assertTrue((awaitItem() as PeriodUiState.Content).heldBackIds.isEmpty())
 
             viewModel.onIncrement(1L)
             testDispatcher.scheduler.advanceUntilIdle()
             expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun goldCompletion_holdsTheCardBackLikeAnyCompletion() = runTest(testDispatcher) {
+        val viewModel = viewModelReturning(outcome(newCount = 5, tierReached = Tier.GOLD, justCompleted = true))
+
+        viewModel.uiState.test {
+            assertEquals(PeriodUiState.Loading, awaitItem())
+            awaitItem()
+
+            viewModel.onIncrement(1L)
+            assertTrue((awaitItem() as PeriodUiState.Content).heldBackIds.contains(1L))
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -139,20 +216,6 @@ class TierCelebrationEventTest {
         viewModel.celebrations.test {
             testDispatcher.scheduler.advanceUntilIdle()
             expectNoEvents()
-        }
-    }
-
-    @Test
-    fun viewModel_readsItsOwnPeriodTypeOnly() = runTest(testDispatcher) {
-        val repository = mockk<AchievementRepository>()
-        every { repository.observePeriod(PeriodType.MONTHLY) } returns flowOf(emptyList())
-
-        val viewModel = PeriodViewModel(repository, PeriodType.MONTHLY)
-
-        viewModel.uiState.test {
-            assertEquals(PeriodUiState.Loading, awaitItem())
-            assertTrue((awaitItem() as PeriodUiState.Content).isEmpty)
-            cancelAndIgnoreRemainingEvents()
         }
     }
 }

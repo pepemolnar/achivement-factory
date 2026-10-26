@@ -26,7 +26,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **TIER-03**: Tier names are fixed as Bronze, Silver, and Gold, and cannot be renamed
 - [ ] **TIER-04**: App accepts only tier ladders that fill downward from Gold — `{Gold}`, `{Silver, Gold}`, or `{Bronze, Silver, Gold}` — and rejects any set omitting Gold or skipping a level
 - [ ] **TIER-05**: App requires tier thresholds to strictly increase from Bronze through Gold
-- [ ] **TIER-06**: When tiers are configured, the lowest tier's threshold is the achievement's done threshold, and higher tiers are upgrades rather than gates
+- [ ] **TIER-06**: When tiers are configured, the achievement is done only when Gold is reached; reaching the lowest configured tier is enough to keep the streak, and each tier below Gold is a celebrated milestone *(revised 2026-10-26 by the owner after on-device use — originally "the lowest tier's threshold is the done threshold")*
 - [ ] **TIER-07**: User can see the tier reached in the current period on the achievement's card
 
 ### Tracking
