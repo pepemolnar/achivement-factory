@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -109,6 +110,17 @@ class PeriodViewModel(
     )
     val celebrations: SharedFlow<CelebrationEvent> = _celebrations.asSharedFlow()
 
+    // CELEB-03: the whole tab just got cleared. Same zero-replay construction as every other
+    // one-shot event here, and emitted only from the action that produced the transition — a
+    // completing tap or a todo tick — never derived from a state snapshot, so it plays exactly once
+    // and never on rotation, re-entering the tab, or restart.
+    private val _fullTabCelebrations = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = EVENT_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val fullTabCelebrations: SharedFlow<Unit> = _fullTabCelebrations.asSharedFlow()
+
     /**
      * Logs one tap of progress. Always +1, regardless of the achievement's target (D-02).
      *
@@ -134,6 +146,7 @@ class PeriodViewModel(
             // the lowest medal, not Gold — and "first flame" only ever on that tap.
             val isFirstFlame = outcome.streakSecured && outcome.newStreak == 1
             if (outcome.justCompleted) {
+                emitIfTabCleared()
                 holdBack(id)
                 _celebrations.tryEmit(
                     CelebrationEvent.Completed(
@@ -184,9 +197,30 @@ class PeriodViewModel(
     fun onToggleTodo(id: Long, done: Boolean) {
         val todos = todoRepository ?: return
         viewModelScope.launch {
-            runCatching { todos.setDone(id, done) }
+            val changed = runCatching { todos.setDone(id, done) }
                 .onFailure { Log.w(TAG, "toggle failed for todo id=$id", it) }
+                .getOrDefault(false)
+            if (changed && done) emitIfTabCleared()
         }
+    }
+
+    /**
+     * Emits the full-tab event if this period's tab is now completely clear: at least one item,
+     * every achievement done (Gold for a ladder) and every todo ticked. Called only right after a
+     * write that just completed something, so the check reads the committed state of the very
+     * write that may have cleared the tab. A failed read is treated as "not cleared" — a missed
+     * celebration is far better than a crash or a false one.
+     */
+    private suspend fun emitIfTabCleared() {
+        val cleared = runCatching {
+            val achievements = repository.observePeriod(periodType).first()
+            val todos = todoRepository?.observeTodos(periodType)?.first().orEmpty()
+            (achievements.isNotEmpty() || todos.isNotEmpty()) &&
+                achievements.all { it.isDone } &&
+                todos.all { it.done }
+        }.onFailure { Log.w(TAG, "full-tab check failed for $periodType", it) }
+            .getOrDefault(false)
+        if (cleared) _fullTabCelebrations.tryEmit(Unit)
     }
 
     /** Deletes a todo for good (TODO-06) — only ever called after the screen's confirmation. */

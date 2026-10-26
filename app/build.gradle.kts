@@ -122,6 +122,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
 
+    // Full-tab celebration particles (CELEB-03). Compose-native since 2.0.0.
+    implementation(libs.konfetti.compose)
+
     testImplementation(composeBom)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)

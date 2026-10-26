@@ -109,6 +109,7 @@ fun AppNavHost(navController: NavHostController) {
                     onOpenArchived = { navController.navigateOnce(Routes.ARCHIVED) },
                     onToggleTodo = viewModel::onToggleTodo,
                     onDeleteTodo = viewModel::onDeleteTodo,
+                    fullTabCelebrations = viewModel.fullTabCelebrations,
                 )
             }
         }

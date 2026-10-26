@@ -17,6 +17,8 @@ mockk = "1.14.11"
 robolectric = "4.16.1"
 androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.1.5"
+# The one third-party animation dependency (CLAUDE.md "Animation"): the full-tab confetti burst.
+konfetti = "2.0.5"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -49,6 +51,8 @@ room-testing = { group = "androidx.room", name = "room-testing", version.ref = "
 
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+konfetti-compose = { group = "nl.dionsegijn", name = "konfetti-compose", version.ref = "konfetti" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }

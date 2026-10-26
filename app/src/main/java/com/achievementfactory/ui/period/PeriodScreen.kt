@@ -50,11 +50,13 @@ import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.achievement.AchievementCard
 import com.achievementfactory.ui.celebration.CelebrationEvent
+import com.achievementfactory.ui.celebration.FullTabCelebration
 import com.achievementfactory.ui.todo.TodoCard
 import com.achievementfactory.ui.theme.MotionSpecs
 import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * One period tab — Daily, Weekly or Monthly (NAV-01, NAV-04, TRACK-02, D-05): renders live Room
@@ -89,7 +91,11 @@ fun PeriodScreen(
     onOpenArchived: () -> Unit = {},
     onToggleTodo: (Long, Boolean) -> Unit = { _, _ -> },
     onDeleteTodo: (Long) -> Unit = {},
+    fullTabCelebrations: Flow<Unit> = emptyFlow(),
 ) {
+    // CELEB-03: non-null only while the full-tab overlay is on screen. A fresh object per event, so
+    // two clears in a row each play; plain `remember`, so it never survives rotation and replays.
+    var fullTabToken by remember { mutableStateOf<Any?>(null) }
     // A delete confirmation is momentary UI, never persisted or replayed.
     var pendingTodoDelete by remember { mutableStateOf<TodoItem?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -116,6 +122,12 @@ fun PeriodScreen(
         }
     }
 
+    LaunchedEffect(fullTabCelebrations, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            fullTabCelebrations.collect { fullTabToken = Any() }
+        }
+    }
+
     LaunchedEffect(celebrations, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             celebrations.collect { event ->
@@ -131,6 +143,7 @@ fun PeriodScreen(
         onCelebrationSettled(event.achievementId)
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -199,6 +212,15 @@ fun PeriodScreen(
                 )
             }
         }
+    }
+
+    fullTabToken?.let { token ->
+        FullTabCelebration(
+            token = token,
+            periodType = periodType,
+            onFinished = { if (fullTabToken === token) fullTabToken = null },
+        )
+    }
     }
 
     pendingTodoDelete?.let { todo ->

@@ -30,7 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.achievementfactory.domain.model.TrackedAchievement
@@ -40,6 +43,9 @@ import com.achievementfactory.ui.celebration.CelebrationEvent
 import com.achievementfactory.ui.celebration.CelebrationStage
 import com.achievementfactory.ui.celebration.CelebrationVisualState
 import com.achievementfactory.ui.celebration.CompletionCelebration
+import com.achievementfactory.ui.haptics.CelebrationHaptics
+import com.achievementfactory.ui.haptics.PlayHaptics
+import com.achievementfactory.ui.haptics.play
 import com.achievementfactory.ui.theme.MotionSpecs
 import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.color
@@ -98,13 +104,27 @@ fun AchievementCard(
         DisposableEffect(celebration) {
             onDispose { onCelebrationSettled(celebration) }
         }
+        // CELEB-05: the tier-matched pattern, once per one-shot event — keyed on the event itself,
+        // so recomposition never replays it and a newer event for this card plays its own.
+        PlayHaptics(key = celebration, pattern = CelebrationHaptics.forTier(celebration.tier))
     }
+
+    // Every tap gets the lightest tick at once; a tap that also completes or reaches a medal gets
+    // its stronger pattern a moment later, when the celebration event arrives.
+    val haptics = LocalHapticFeedback.current
+    val hapticScope = rememberCoroutineScope()
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = Spacing.cardMinHeight)
-            .combinedClickable(onClick = onIncrement, onLongClick = onLongPress),
+            .combinedClickable(
+                onClick = {
+                    hapticScope.launch { haptics.play(CelebrationHaptics.increment) }
+                    onIncrement()
+                },
+                onLongClick = onLongPress,
+            ),
         shape = RoundedCornerShape(Spacing.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),

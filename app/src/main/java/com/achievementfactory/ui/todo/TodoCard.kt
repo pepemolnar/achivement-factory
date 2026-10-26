@@ -20,6 +20,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.achievementfactory.ui.haptics.CelebrationHaptics
+import com.achievementfactory.ui.haptics.play
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -44,12 +49,22 @@ fun TodoCard(
     modifier: Modifier = Modifier,
 ) {
     val outline = MaterialTheme.colorScheme.outlineVariant
+    val haptics = LocalHapticFeedback.current
+    val hapticScope = rememberCoroutineScope()
     Card(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = Spacing.todoMinHeight)
             .semantics { stateDescription = if (todo.done) "Done" else "Not done" }
-            .combinedClickable(role = Role.Checkbox, onClick = onToggle, onLongClick = onLongPress),
+            .combinedClickable(
+                role = Role.Checkbox,
+                onClick = {
+                    val pattern = if (todo.done) CelebrationHaptics.todoUnticked else CelebrationHaptics.todoTicked
+                    hapticScope.launch { haptics.play(pattern) }
+                    onToggle()
+                },
+                onLongClick = onLongPress,
+            ),
         shape = RoundedCornerShape(Spacing.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(Spacing.todoBorderWidth, outline),

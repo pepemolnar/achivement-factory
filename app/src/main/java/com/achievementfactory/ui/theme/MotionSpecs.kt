@@ -55,6 +55,31 @@ object MotionSpecs {
     val reorderPlacement: FiniteAnimationSpec<IntOffset> =
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 
+    // --- Full-tab celebration (CELEB-03) -------------------------------------------------------
+
+    /**
+     * Wait before the full-tab moment starts, so the last card's own celebration is seen first
+     * and the big one reads as its consequence. Collapses to 0 under reduced motion.
+     */
+    const val FULL_TAB_DELAY_MS = 350L
+
+    /** How long the full-tab overlay (confetti + banner) stays up before it clears itself. */
+    const val FULL_TAB_DURATION_MS = 2_600L
+
+    /** Under reduced motion: no confetti at all, just the banner, briefly (CELEB-06). */
+    const val FULL_TAB_REDUCED_DURATION_MS = 1_200L
+
+    /** How long the confetti emitters fire, and how many particles each throws in that time. */
+    const val FULL_TAB_EMIT_MS = 180L
+    const val FULL_TAB_PARTICLES_PER_BURST = 90
+
+    /** The banner's pop-in. Big and bouncy — this is the app's largest moment. */
+    val fullTabBanner: AnimationSpec<Float> =
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+
+    /** The banner fading back out at the end. */
+    val fullTabFade: AnimationSpec<Float> = tween(durationMillis = 400, easing = FastOutSlowInEasing)
+
     /** What every [Float]-valued spec above collapses to under reduced motion. */
     val reducedCollapse: AnimationSpec<Float> = tween(durationMillis = 90, easing = LinearEasing)
 
