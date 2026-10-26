@@ -337,6 +337,7 @@ class CreateAchievementViewModelTest {
         val viewModel = CreateAchievementViewModel(fakeRepository())
         viewModel.onNameChange("Read")
         viewModel.onTiersEnabledChange(true)
+        viewModel.onGoldChange("") // Gold starts pre-filled with the target; clear it
         viewModel.onSilverChange("3")
 
         viewModel.onSave()
@@ -361,6 +362,7 @@ class CreateAchievementViewModelTest {
     fun save_withBothABlankNameAndABadLadder_reportsBothAtOnce() = runTest(testDispatcher) {
         val viewModel = CreateAchievementViewModel(fakeRepository())
         viewModel.onTiersEnabledChange(true)
+        viewModel.onGoldChange("") // Gold starts pre-filled with the target; clear it
 
         viewModel.onSave()
 
@@ -374,6 +376,7 @@ class CreateAchievementViewModelTest {
         val viewModel = CreateAchievementViewModel(fakeRepository())
         viewModel.onNameChange("Read")
         viewModel.onTiersEnabledChange(true)
+        viewModel.onGoldChange("") // Gold starts pre-filled with the target; clear it
         viewModel.onSave() // no Gold → error
 
         viewModel.onGoldChange("12a")
