@@ -76,7 +76,7 @@ fun CompletionCelebration(
     val ringProgress = remember(event) { Animatable(0f) }
     val checkmarkProgress = remember(event) { Animatable(0f) }
     val checkScale = remember(event) { Animatable(1f) }
-    val flameScale = remember(event) { Animatable(if (ticksStreak && event?.isFirstFlame == true) 0f else 1f) }
+    val flameScale = remember(event) { Animatable(if (ticksStreak && event.isFirstFlame) 0f else 1f) }
     val flameFlash = remember(event) { Animatable(0f) }
     val burstProgress = remember(event) { Animatable(0f) }
     val tierBadgeScale = remember(event) { Animatable(if (event?.tier != null) 0f else 1f) }

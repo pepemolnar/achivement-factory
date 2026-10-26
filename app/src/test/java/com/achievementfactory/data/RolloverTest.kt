@@ -142,7 +142,12 @@ class RolloverTest {
             val outcome = repository.increment(id)!!
             assertEquals(1, outcome.newCount)
 
-            val afterIncrement = awaitItem()
+            // The write refreshes the provider first, so the flow may legitimately emit the new
+            // day's empty state before the write itself lands. What must hold is that the tap
+            // shows up — on the new day — without any further signal; Turbine's timeout fails the
+            // test if it never does.
+            var afterIncrement = awaitItem()
+            while (afterIncrement.single().count == 0) afterIncrement = awaitItem()
             assertEquals("the tap must be visible on the day it was written to", 1, afterIncrement.single().count)
             assertTrue(afterIncrement.single().isDone)
 
