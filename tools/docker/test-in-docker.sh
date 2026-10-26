@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs the project's Gradle gate inside an eclipse-temurin:21-jdk container (see run-tests.bat).
 # The Android SDK and Gradle home live in named Docker volumes, so only the first run downloads them.
+# /root/.android is a named volume too: it holds the debug signing key, which must stay the same
+# between runs or each new APK refuses to install over the previous one.
 set -uo pipefail
 LOG=/project/.docker-test.log
 exec > >(tee "$LOG") 2>&1
