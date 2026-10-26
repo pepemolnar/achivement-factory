@@ -121,6 +121,17 @@ class MigrationOneToTwoTest {
                 assertEquals(4, progress?.count)
                 assertEquals("SILVER", progress?.tierReached)
                 assertEquals(1, database.progressDao().countFor(1, "2026-08-12"))
+
+                // Phase 4's todos table exists after the migration and is usable.
+                val todoId = database.todoDao().insert(
+                    com.achievementfactory.data.todo.TodoEntity(
+                        title = "Call mum",
+                        periodType = "DAILY",
+                        periodKey = "2026-08-12",
+                        createdAtEpochDay = 20312,
+                    ),
+                )
+                assertEquals("Call mum", database.todoDao().getById(todoId)?.title)
             }
         } finally {
             database.close()

@@ -1,5 +1,6 @@
 package com.achievementfactory.ui.period
 
+import com.achievementfactory.domain.model.TodoItem
 import com.achievementfactory.domain.model.TrackedAchievement
 
 /**
@@ -18,8 +19,15 @@ sealed interface PeriodUiState {
         val heldBackIds: Set<Long> = emptySet(),
         /** Every achievement in the tab's stored order (ACH-09) — what reorder mode shows. */
         val all: List<TrackedAchievement> = outstanding + done,
+        /** This period's unfinished todos, listed after the outstanding achievements (NAV-02). */
+        val outstandingTodos: List<TodoItem> = emptyList(),
+        /** This period's ticked todos, in the Done section with the done achievements. */
+        val doneTodos: List<TodoItem> = emptyList(),
     ) : PeriodUiState {
-        val isEmpty: Boolean get() = outstanding.isEmpty() && done.isEmpty()
+        val isEmpty: Boolean
+            get() = outstanding.isEmpty() && done.isEmpty() && outstandingTodos.isEmpty() && doneTodos.isEmpty()
+
+        val hasDoneSection: Boolean get() = done.isNotEmpty() || doneTodos.isNotEmpty()
 
         companion object {
             /**
@@ -28,9 +36,21 @@ sealed interface PeriodUiState {
              * of its completion animation, so the sink into Done reads as a consequence of that
              * animation rather than interrupting it (D-06).
              */
-            fun partition(achievements: List<TrackedAchievement>, heldBackIds: Set<Long> = emptySet()): Content {
+            fun partition(
+                achievements: List<TrackedAchievement>,
+                heldBackIds: Set<Long> = emptySet(),
+                todos: List<TodoItem> = emptyList(),
+            ): Content {
                 val (done, outstanding) = achievements.partition { it.isDone && it.id !in heldBackIds }
-                return Content(outstanding = outstanding, done = done, heldBackIds = heldBackIds, all = achievements)
+                val (doneTodos, outstandingTodos) = todos.partition { it.done }
+                return Content(
+                    outstanding = outstanding,
+                    done = done,
+                    heldBackIds = heldBackIds,
+                    all = achievements,
+                    outstandingTodos = outstandingTodos,
+                    doneTodos = doneTodos,
+                )
             }
         }
     }

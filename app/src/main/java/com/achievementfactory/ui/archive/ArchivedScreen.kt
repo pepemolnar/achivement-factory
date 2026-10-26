@@ -38,11 +38,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.achievementfactory.domain.model.ArchivedAchievement
+import com.achievementfactory.domain.model.ExpiredTodo
 import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.achievement.AchievementGlyph
 import com.achievementfactory.ui.period.tabLabel
 import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.color
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Archived achievements (ACH-06 – ACH-08), grouped by period in tab order. Restore puts one back
@@ -57,9 +62,13 @@ fun ArchivedScreen(
     onBack: () -> Unit,
     onRestore: (Long) -> Unit,
     onDeletePermanently: (Long) -> Unit,
+    onRestoreTodo: (Long, PeriodType) -> Unit = { _, _ -> },
+    onDeleteTodo: (Long) -> Unit = {},
 ) {
-    // Held only for as long as the dialog is up — a confirmation is never persisted or replayed.
+    // Held only for as long as a dialog is up — a confirmation is never persisted or replayed.
     var pendingDelete by remember { mutableStateOf<ArchivedAchievement?>(null) }
+    var pendingTodoRestore by remember { mutableStateOf<ExpiredTodo?>(null) }
+    var pendingTodoDelete by remember { mutableStateOf<ExpiredTodo?>(null) }
 
     Scaffold(
         topBar = {
@@ -78,12 +87,12 @@ fun ArchivedScreen(
             is ArchivedUiState.Error -> Centered(innerPadding) {
                 Text(uiState.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
             }
-            is ArchivedUiState.Content -> if (uiState.items.isEmpty()) {
+            is ArchivedUiState.Content -> if (uiState.isEmpty) {
                 Centered(innerPadding) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Nothing archived", style = MaterialTheme.typography.headlineSmall)
                         Text(
-                            "Archive an achievement from its detail screen to tuck it away here.",
+                            "Archived achievements and unfinished todos from past periods show up here.",
                             style = MaterialTheme.typography.bodyLarge,
                             textAlign = TextAlign.Center,
                         )
@@ -93,8 +102,11 @@ fun ArchivedScreen(
                 ArchivedList(
                     innerPadding = innerPadding,
                     items = uiState.items,
+                    todos = uiState.todos,
                     onRestore = onRestore,
                     onDeleteRequest = { pendingDelete = it },
+                    onTodoRestoreRequest = { pendingTodoRestore = it },
+                    onTodoDeleteRequest = { pendingTodoDelete = it },
                 )
             }
         }
@@ -125,6 +137,50 @@ fun ArchivedScreen(
             },
         )
     }
+
+    // TODO-05: a restored todo goes into a *current* period, chosen here.
+    pendingTodoRestore?.let { todo ->
+        AlertDialog(
+            onDismissRequest = { pendingTodoRestore = null },
+            title = { Text("Restore \u201C${todo.title}\u201D to\u2026") },
+            text = {
+                Column {
+                    listOf(
+                        PeriodType.DAILY to "Today",
+                        PeriodType.WEEKLY to "This week",
+                        PeriodType.MONTHLY to "This month",
+                    ).forEach { (type, label) ->
+                        TextButton(
+                            onClick = {
+                                onRestoreTodo(todo.id, type)
+                                pendingTodoRestore = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(label) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pendingTodoRestore = null }) { Text("Cancel") } },
+        )
+    }
+
+    pendingTodoDelete?.let { todo ->
+        AlertDialog(
+            onDismissRequest = { pendingTodoDelete = null },
+            title = { Text("Delete \u201C${todo.title}\u201D?") },
+            text = { Text("This todo will be removed for good.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteTodo(todo.id)
+                        pendingTodoDelete = null
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pendingTodoDelete = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
@@ -141,8 +197,11 @@ private fun Centered(innerPadding: PaddingValues, content: @Composable () -> Uni
 private fun ArchivedList(
     innerPadding: PaddingValues,
     items: List<ArchivedAchievement>,
+    todos: List<ExpiredTodo>,
     onRestore: (Long) -> Unit,
     onDeleteRequest: (ArchivedAchievement) -> Unit,
+    onTodoRestoreRequest: (ExpiredTodo) -> Unit,
+    onTodoDeleteRequest: (ExpiredTodo) -> Unit,
 ) {
     val groups = PeriodType.entries.mapNotNull { type ->
         items.filter { it.periodType == type }.takeIf { it.isNotEmpty() }?.let { type to it }
@@ -170,8 +229,67 @@ private fun ArchivedList(
                 ArchivedRow(row, onRestore = { onRestore(row.id) }, onDelete = { onDeleteRequest(row) })
             }
         }
+        if (todos.isNotEmpty()) {
+            item(key = "header-todos") {
+                Text(
+                    text = "Unfinished todos",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.xs),
+                )
+            }
+            items(todos, key = { "todo-${it.id}" }) { todo ->
+                ExpiredTodoRow(
+                    todo,
+                    onRestore = { onTodoRestoreRequest(todo) },
+                    onDelete = { onTodoDeleteRequest(todo) },
+                )
+            }
+        }
     }
 }
+
+@Composable
+private fun ExpiredTodoRow(todo: ExpiredTodo, onRestore: () -> Unit, onDelete: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(Spacing.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = Modifier.fillMaxWidth().heightIn(min = Spacing.todoMinHeight),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(todo.title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    expiredPeriodLabel(todo),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onRestore) { Text("Restore") }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Filled.DeleteForever,
+                    contentDescription = "Delete ${todo.title}",
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+/** "Due 25 Oct", "Due week of 19 Oct", "Due October 2026" — from the stored period key. */
+internal fun expiredPeriodLabel(todo: ExpiredTodo): String = runCatching {
+    val day = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())
+    when (todo.periodType) {
+        PeriodType.DAILY -> "Due ${LocalDate.parse(todo.periodKey).format(day)}"
+        PeriodType.WEEKLY -> "Due week of ${LocalDate.parse(todo.periodKey).format(day)}"
+        PeriodType.MONTHLY ->
+            "Due ${YearMonth.parse(todo.periodKey).format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))}"
+    }
+}.getOrDefault("Due ${todo.periodKey}")
 
 @Composable
 private fun ArchivedRow(row: ArchivedAchievement, onRestore: () -> Unit, onDelete: () -> Unit) {

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.achievementfactory.AchievementFactoryApp
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.data.todo.TodoRepository
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.celebration.CelebrationEvent
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -62,6 +64,9 @@ private const val EVENT_BUFFER_CAPACITY = 8
 class PeriodViewModel(
     private val repository: AchievementRepository,
     val periodType: PeriodType = PeriodType.DAILY,
+    // Nullable so the many achievement-only tests can keep constructing this with one repository;
+    // the real app always passes it (see [factoryFor]).
+    private val todoRepository: TodoRepository? = null,
 ) : ViewModel() {
 
     // The seam plan 01-04 built and this plan populates: an achievement whose id is in this set
@@ -78,7 +83,10 @@ class PeriodViewModel(
     val uiState: StateFlow<PeriodUiState> = combine(
         repository.observePeriod(periodType),
         _heldBackIds,
-    ) { achievements, heldBackIds -> PeriodUiState.Content.partition(achievements, heldBackIds) as PeriodUiState }
+        todoRepository?.observeTodos(periodType) ?: flowOf(emptyList()),
+    ) { achievements, heldBackIds, todos ->
+        PeriodUiState.Content.partition(achievements, heldBackIds, todos) as PeriodUiState
+    }
         .catch { emit(PeriodUiState.Error(LOAD_ERROR_MESSAGE)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PeriodUiState.Loading)
 
@@ -169,6 +177,27 @@ class PeriodViewModel(
      * every other write here, because an exception escaping `viewModelScope.launch` kills the
      * process.
      */
+    /**
+     * Ticks or unticks a todo (TODO-03) — tapping again is the undo. No celebration event: a todo
+     * is a one-off with no streak to tick (the full-tab moment that counts todos is Phase 5).
+     */
+    fun onToggleTodo(id: Long, done: Boolean) {
+        val todos = todoRepository ?: return
+        viewModelScope.launch {
+            runCatching { todos.setDone(id, done) }
+                .onFailure { Log.w(TAG, "toggle failed for todo id=$id", it) }
+        }
+    }
+
+    /** Deletes a todo for good (TODO-06) — only ever called after the screen's confirmation. */
+    fun onDeleteTodo(id: Long) {
+        val todos = todoRepository ?: return
+        viewModelScope.launch {
+            runCatching { todos.delete(id) }
+                .onFailure { Log.w(TAG, "delete failed for todo id=$id", it) }
+        }
+    }
+
     fun onReorder(orderedIds: List<Long>) {
         viewModelScope.launch {
             runCatching { repository.reorder(periodType, orderedIds) }
@@ -218,7 +247,7 @@ class PeriodViewModel(
         fun factoryFor(periodType: PeriodType): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as AchievementFactoryApp
-                PeriodViewModel(app.container.achievementRepository, periodType)
+                PeriodViewModel(app.container.achievementRepository, periodType, app.container.todoRepository)
             }
         }
 

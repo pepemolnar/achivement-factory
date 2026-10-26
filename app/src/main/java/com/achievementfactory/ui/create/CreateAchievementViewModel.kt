@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.achievementfactory.AchievementFactoryApp
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.data.todo.TodoRepository
 import com.achievementfactory.domain.edit.ThresholdChangeError
 import com.achievementfactory.domain.edit.ThresholdChangeRule
 import com.achievementfactory.domain.model.AchievementDefinition
@@ -68,6 +69,9 @@ class CreateAchievementViewModel(
     private val repository: AchievementRepository,
     initialPeriodType: PeriodType = PeriodType.DAILY,
     private val editingId: Long? = null,
+    // Nullable so achievement-only tests can keep constructing this without it; the app always
+    // passes it (see [Factory]).
+    private val todoRepository: TodoRepository? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -130,6 +134,12 @@ class CreateAchievementViewModel(
      */
     fun onIconChange(icon: String) {
         _uiState.update { it.copy(icon = firstGrapheme(icon)) }
+    }
+
+    /** Achievement or todo (create mode only — an existing achievement can't become a todo). */
+    fun onKindChange(kind: ItemKind) {
+        if (_uiState.value.isEditing) return
+        _uiState.update { it.copy(kind = kind, tierError = null) }
     }
 
     fun onAccentChange(accent: AccentSwatch) {
@@ -201,6 +211,11 @@ class CreateAchievementViewModel(
         val trimmedName = current.name.trim()
         val nameError = if (trimmedName.isEmpty()) NAME_REQUIRED_ERROR else null
 
+        if (current.kind == ItemKind.TODO) {
+            saveTodo(trimmedName, nameError, current.periodType)
+            return
+        }
+
         var ladder: TierLadder? = null
         var tierError: String? = null
         if (current.tiersEnabled) {
@@ -267,6 +282,30 @@ class CreateAchievementViewModel(
         }
     }
 
+    /** A todo is just a title and its period (TODO-01): no icon, colour, target or medals. */
+    private fun saveTodo(title: String, nameError: String?, periodType: PeriodType) {
+        if (nameError != null) {
+            _uiState.update { it.copy(nameError = nameError) }
+            return
+        }
+        val todos = todoRepository ?: return
+        saveInFlight = true
+        _uiState.update { it.copy(saveError = null) }
+        viewModelScope.launch {
+            try {
+                todos.create(title, periodType)
+                _uiState.update { it.copy(saved = true) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                Log.w(TAG, "todo create failed for title=$title", failure)
+                _uiState.update { it.copy(saveError = SAVE_FAILED_ERROR) }
+            } finally {
+                saveInFlight = false
+            }
+        }
+    }
+
     private fun isAcceptableCount(raw: String): Boolean =
         raw.all(Char::isDigit) && raw.length <= CreateAchievementUiState.MAX_TARGET_DIGITS
 
@@ -280,7 +319,12 @@ class CreateAchievementViewModel(
                 val initialPeriodType = PeriodType.entries.firstOrNull { it.name == requested } ?: PeriodType.DAILY
                 // Present only on the `edit/{achievementId}` route; null means "create".
                 val editingId = savedStateHandle.get<Long>("achievementId")
-                CreateAchievementViewModel(app.container.achievementRepository, initialPeriodType, editingId)
+                CreateAchievementViewModel(
+                    app.container.achievementRepository,
+                    initialPeriodType,
+                    editingId,
+                    app.container.todoRepository,
+                )
             }
         }
     }

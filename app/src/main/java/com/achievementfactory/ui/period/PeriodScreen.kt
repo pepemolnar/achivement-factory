@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,10 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.achievementfactory.domain.model.TodoItem
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.achievement.AchievementCard
 import com.achievementfactory.ui.celebration.CelebrationEvent
+import com.achievementfactory.ui.todo.TodoCard
 import com.achievementfactory.ui.theme.MotionSpecs
 import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.rememberReducedMotion
@@ -84,7 +87,11 @@ fun PeriodScreen(
     bottomBar: @Composable () -> Unit = {},
     onReorder: (List<Long>) -> Unit = {},
     onOpenArchived: () -> Unit = {},
+    onToggleTodo: (Long, Boolean) -> Unit = { _, _ -> },
+    onDeleteTodo: (Long) -> Unit = {},
 ) {
+    // A delete confirmation is momentary UI, never persisted or replayed.
+    var pendingTodoDelete by remember { mutableStateOf<TodoItem?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     // Reorder mode (ACH-09): entered from the top-bar menu, left with Done or Back. Saveable so a
     // rotation mid-reorder doesn't drop the user out of it.
@@ -187,9 +194,28 @@ fun PeriodScreen(
                     onLongPress = onLongPress,
                     activeCelebrations = activeCelebrations,
                     onCelebrationSettled = settle,
+                    onToggleTodo = onToggleTodo,
+                    onTodoLongPress = { pendingTodoDelete = it },
                 )
             }
         }
+    }
+
+    pendingTodoDelete?.let { todo ->
+        AlertDialog(
+            onDismissRequest = { pendingTodoDelete = null },
+            title = { Text("Delete \u201C${todo.title}\u201D?") },
+            text = { Text("This todo will be removed for good.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteTodo(todo.id)
+                        pendingTodoDelete = null
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pendingTodoDelete = null }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -233,12 +259,12 @@ private fun EmptyBody(innerPadding: PaddingValues, periodType: PeriodType) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "No ${periodType.tabLabel().lowercase()} achievements yet",
+                text = "Nothing here yet",
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "Tap + to add your first one.",
+                text = "Tap + to add an achievement or a todo.",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
             )
@@ -254,6 +280,8 @@ private fun PeriodList(
     onLongPress: (Long) -> Unit,
     activeCelebrations: Map<Long, CelebrationEvent>,
     onCelebrationSettled: (CelebrationEvent) -> Unit,
+    onToggleTodo: (Long, Boolean) -> Unit,
+    onTodoLongPress: (TodoItem) -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
     val placementSpec = MotionSpecs.resolvePlacement(MotionSpecs.cardSink, reducedMotion)
@@ -279,7 +307,18 @@ private fun PeriodList(
             )
         }
 
-        if (content.done.isNotEmpty()) {
+        // Todos follow the achievements in one list (NAV-02). String keys keep them from ever
+        // colliding with an achievement's Long id.
+        items(content.outstandingTodos, key = { "todo-${it.id}" }) { todo ->
+            TodoCard(
+                todo = todo,
+                onToggle = { onToggleTodo(todo.id, true) },
+                onLongPress = { onTodoLongPress(todo) },
+                modifier = Modifier.animateItem(placementSpec = placementSpec),
+            )
+        }
+
+        if (content.hasDoneSection) {
             item(key = "done-divider") {
                 DoneSectionHeader()
             }
@@ -292,6 +331,14 @@ private fun PeriodList(
                     onLongPress = { onLongPress(achievement.id) },
                     celebration = activeCelebrations[achievement.id],
                     onCelebrationSettled = onCelebrationSettled,
+                    modifier = Modifier.animateItem(placementSpec = placementSpec),
+                )
+            }
+            items(content.doneTodos, key = { "todo-${it.id}" }) { todo ->
+                TodoCard(
+                    todo = todo,
+                    onToggle = { onToggleTodo(todo.id, false) },
+                    onLongPress = { onTodoLongPress(todo) },
                     modifier = Modifier.animateItem(placementSpec = placementSpec),
                 )
             }

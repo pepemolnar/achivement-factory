@@ -107,6 +107,8 @@ fun AppNavHost(navController: NavHostController) {
                     },
                     onReorder = viewModel::onReorder,
                     onOpenArchived = { navController.navigateOnce(Routes.ARCHIVED) },
+                    onToggleTodo = viewModel::onToggleTodo,
+                    onDeleteTodo = viewModel::onDeleteTodo,
                 )
             }
         }
@@ -132,6 +134,8 @@ fun AppNavHost(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onRestore = viewModel::onRestore,
                 onDeletePermanently = viewModel::onDeletePermanently,
+                onRestoreTodo = viewModel::onRestoreTodo,
+                onDeleteTodo = viewModel::onDeleteTodo,
             )
         }
         composable(
@@ -180,6 +184,7 @@ private fun AchievementForm(navController: NavHostController) {
         onBronzeChange = viewModel::onBronzeChange,
         onSilverChange = viewModel::onSilverChange,
         onGoldChange = viewModel::onGoldChange,
+        onKindChange = viewModel::onKindChange,
         onSave = viewModel::onSave,
         onBack = { navController.popBackStack() },
     )

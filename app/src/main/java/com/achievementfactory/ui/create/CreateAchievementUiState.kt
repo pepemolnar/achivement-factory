@@ -19,7 +19,11 @@ import com.achievementfactory.period.PeriodType
  * validation results about specific fields and belong under them, the last is "the database write
  * failed" and belongs next to the Save button.
  */
+/** What the shared creation form makes (Phase 4: one creation flow for both). */
+enum class ItemKind { ACHIEVEMENT, TODO }
+
 data class CreateAchievementUiState(
+    val kind: ItemKind = ItemKind.ACHIEVEMENT,
     val name: String = "",
     val icon: String? = null,
     val accent: AccentSwatch = AccentSwatch.INDIGO,

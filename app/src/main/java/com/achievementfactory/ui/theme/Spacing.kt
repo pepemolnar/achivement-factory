@@ -25,4 +25,7 @@ object Spacing {
     val flameBadgeSize: Dp = 16.dp
     val burstParticleSize: Dp = 6.dp
     val tierBadgeIconSize: Dp = 14.dp
+    val todoMinHeight: Dp = 56.dp
+    val todoCheckSize: Dp = 24.dp
+    val todoBorderWidth: Dp = 1.dp
 }

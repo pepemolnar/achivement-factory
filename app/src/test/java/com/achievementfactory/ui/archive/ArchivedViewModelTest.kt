@@ -21,6 +21,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import com.achievementfactory.domain.model.ExpiredTodo
+import com.achievementfactory.data.todo.TodoRepository
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArchivedViewModelTest {
@@ -81,5 +83,36 @@ class ArchivedViewModelTest {
 
         coVerify(exactly = 1) { repository.restore(1L) }
         coVerify(exactly = 1) { repository.deletePermanently(2L) }
+    }
+
+    @Test
+    fun expiredTodos_joinTheArchive_andTheirActionsReachTheTodoRepository() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeArchived() } returns flowOf(listOf(item))
+        val todos = mockk<TodoRepository>()
+        val expired = ExpiredTodo(5L, "Call mum", PeriodType.DAILY, "2026-08-11")
+        every { todos.observeExpired() } returns flowOf(listOf(expired))
+        coEvery { todos.restore(5L, PeriodType.WEEKLY) } returns true
+        coEvery { todos.delete(5L) } returns true
+
+        val viewModel = ArchivedViewModel(repository, todos)
+
+        viewModel.uiState.test {
+            assertEquals(ArchivedUiState.Loading, awaitItem())
+            assertEquals(ArchivedUiState.Content(listOf(item), listOf(expired)), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+        viewModel.onRestoreTodo(5L, PeriodType.WEEKLY)
+        viewModel.onDeleteTodo(5L)
+        testDispatcher.scheduler.advanceUntilIdle()
+        coVerify(exactly = 1) { todos.restore(5L, PeriodType.WEEKLY) }
+        coVerify(exactly = 1) { todos.delete(5L) }
+    }
+
+    @Test
+    fun expiredPeriodLabel_describesEachKindOfPeriod_andFallsBackOnGarbage() {
+        assertEquals(true, expiredPeriodLabel(ExpiredTodo(1L, "x", PeriodType.WEEKLY, "2026-08-10")).startsWith("Due week of"))
+        assertEquals(true, expiredPeriodLabel(ExpiredTodo(1L, "x", PeriodType.MONTHLY, "2026-08")).contains("2026"))
+        assertEquals("Due nonsense", expiredPeriodLabel(ExpiredTodo(1L, "x", PeriodType.DAILY, "nonsense")))
     }
 }

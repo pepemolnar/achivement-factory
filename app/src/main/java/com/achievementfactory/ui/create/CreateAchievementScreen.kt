@@ -55,6 +55,7 @@ fun CreateAchievementScreen(
     onBronzeChange: (String) -> Unit = {},
     onSilverChange: (String) -> Unit = {},
     onGoldChange: (String) -> Unit = {},
+    onKindChange: (ItemKind) -> Unit = {},
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -62,7 +63,11 @@ fun CreateAchievementScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (uiState.isEditing) "Edit achievement" else "New achievement",
+                        text = when {
+                            uiState.isEditing -> "Edit achievement"
+                            uiState.kind == ItemKind.TODO -> "New todo"
+                            else -> "New achievement"
+                        },
                         style = MaterialTheme.typography.headlineSmall,
                     )
                 },
@@ -90,7 +95,13 @@ fun CreateAchievementScreen(
                         onClick = onSave,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (uiState.isEditing) "Save changes" else "Save achievement")
+                        Text(
+                            when {
+                                uiState.isEditing -> "Save changes"
+                                uiState.kind == ItemKind.TODO -> "Save todo"
+                                else -> "Save achievement"
+                            },
+                        )
                     }
                 }
             }
@@ -109,10 +120,15 @@ fun CreateAchievementScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
+            val isTodo = uiState.kind == ItemKind.TODO
+            if (!uiState.isEditing) {
+                KindPicker(selected = uiState.kind, onSelect = onKindChange)
+            }
+
             OutlinedTextField(
                 value = uiState.name,
                 onValueChange = onNameChange,
-                label = { Text("Name") },
+                label = { Text(if (isTodo) "Todo" else "Name") },
                 singleLine = true,
                 isError = uiState.nameError != null,
                 supportingText = {
@@ -121,6 +137,7 @@ fun CreateAchievementScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            if (!isTodo) {
             OutlinedTextField(
                 value = uiState.icon ?: "",
                 onValueChange = onIconChange,
@@ -131,10 +148,16 @@ fun CreateAchievementScreen(
             )
 
             AccentSwatchPicker(selected = uiState.accent, onSelect = onAccentChange)
+            }
 
-            PeriodPicker(selected = uiState.periodType, onSelect = onPeriodTypeChange, locked = uiState.isEditing)
+            PeriodPicker(
+                selected = uiState.periodType,
+                onSelect = onPeriodTypeChange,
+                locked = uiState.isEditing,
+                forTodo = isTodo,
+            )
 
-            Column(modifier = Modifier.padding(top = Spacing.lg)) {
+            if (!isTodo) Column(modifier = Modifier.padding(top = Spacing.lg)) {
                 AdvancedSection(
                     expanded = uiState.advancedExpanded,
                     targetInput = uiState.targetInput,
@@ -165,9 +188,14 @@ fun CreateAchievementScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit, locked: Boolean = false) {
+private fun PeriodPicker(
+    selected: PeriodType,
+    onSelect: (PeriodType) -> Unit,
+    locked: Boolean = false,
+    forTodo: Boolean = false,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        Text(text = "Repeats", style = MaterialTheme.typography.labelLarge)
+        Text(text = if (forTodo) "Due" else "Repeats", style = MaterialTheme.typography.labelLarge)
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             val options = PeriodType.entries
             options.forEachIndexed { index, type ->
@@ -177,12 +205,16 @@ private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit, l
                     enabled = !locked || type == selected,
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 ) {
-                    Text(type.tabLabel())
+                    Text(if (forTodo) type.todoLabel() else type.tabLabel())
                 }
             }
         }
         Text(
-            text = if (locked) "The period can't change after an achievement is created." else when (selected) {
+            text = if (forTodo) {
+                "If it isn't done by the end of ${todoDeadlinePhrase(selected)}, it moves to the archive."
+            } else if (locked) {
+                "The period can't change after an achievement is created."
+            } else when (selected) {
                 PeriodType.DAILY -> "Resets every day at midnight."
                 PeriodType.WEEKLY -> "Resets every Monday. Weeks run Monday to Sunday."
                 PeriodType.MONTHLY -> "Resets on the 1st of every month."
@@ -190,5 +222,35 @@ private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit, l
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+private fun PeriodType.todoLabel(): String = when (this) {
+    PeriodType.DAILY -> "Today"
+    PeriodType.WEEKLY -> "This week"
+    PeriodType.MONTHLY -> "This month"
+}
+
+private fun todoDeadlinePhrase(selected: PeriodType): String = when (selected) {
+    PeriodType.DAILY -> "today"
+    PeriodType.WEEKLY -> "this week (Sunday)"
+    PeriodType.MONTHLY -> "this month"
+}
+
+/** Achievement or todo — the single creation flow for both (Phase 4). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KindPicker(selected: ItemKind, onSelect: (ItemKind) -> Unit) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val options = ItemKind.entries
+        options.forEachIndexed { index, kind ->
+            SegmentedButton(
+                selected = kind == selected,
+                onClick = { onSelect(kind) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+            ) {
+                Text(if (kind == ItemKind.TODO) "Todo" else "Achievement")
+            }
+        }
     }
 }

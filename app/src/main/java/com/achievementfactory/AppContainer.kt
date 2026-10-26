@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.achievementfactory.data.AppDatabase
 import com.achievementfactory.data.MIGRATION_1_2
 import com.achievementfactory.data.achievement.AchievementRepository
+import com.achievementfactory.data.todo.TodoRepository
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
 import com.achievementfactory.domain.streak.StreakCalculator
 import com.achievementfactory.period.AppClock
@@ -75,6 +76,15 @@ class AppContainer(context: Context) {
             progressDao = database.progressDao(),
             clock = appClock,
             reconcileStreaks = reconcileStreaks,
+            currentPeriodProvider = currentPeriodProvider,
+        )
+    }
+
+    val todoRepository: TodoRepository by lazy {
+        TodoRepository(
+            database = database,
+            todoDao = database.todoDao(),
+            clock = appClock,
             currentPeriodProvider = currentPeriodProvider,
         )
     }

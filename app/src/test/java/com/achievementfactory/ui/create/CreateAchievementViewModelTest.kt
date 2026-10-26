@@ -20,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import com.achievementfactory.period.PeriodType
 import com.achievementfactory.domain.tier.TierLadder
+import com.achievementfactory.data.todo.TodoRepository
 
 /**
  * A plain JVM test — [AchievementRepository] is stubbed with MockK as a test double (the same
@@ -383,5 +384,52 @@ class CreateAchievementViewModelTest {
         viewModel.onGoldChange("12")
         assertEquals("12", viewModel.uiState.value.goldInput)
         assertEquals(null, viewModel.uiState.value.tierError)
+    }
+
+    // --- Phase 4: todos through the same form -----------------------------------------------------
+
+    @Test
+    fun todoMode_savesATodoInTheChosenPeriod_andNoAchievement() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val todos = mockk<TodoRepository>()
+        coEvery { todos.create(any(), any()) } returns 9L
+        val viewModel = CreateAchievementViewModel(repository, PeriodType.WEEKLY, todoRepository = todos)
+        viewModel.onKindChange(ItemKind.TODO)
+        viewModel.onNameChange("  Call mum  ")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { todos.create("Call mum", PeriodType.WEEKLY) }
+        coVerify(exactly = 0) { repository.create(any(), any(), any(), any(), any(), any()) }
+        assertTrue(viewModel.uiState.value.saved)
+    }
+
+    @Test
+    fun todoMode_stillRequiresATitle() = runTest(testDispatcher) {
+        val todos = mockk<TodoRepository>()
+        val viewModel = CreateAchievementViewModel(fakeRepository(), todoRepository = todos)
+        viewModel.onKindChange(ItemKind.TODO)
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Name is required.", viewModel.uiState.value.nameError)
+        coVerify(exactly = 0) { todos.create(any(), any()) }
+    }
+
+    @Test
+    fun todoMode_ignoresAnInvalidMedalLadderLeftInTheAchievementFields() = runTest(testDispatcher) {
+        val todos = mockk<TodoRepository>()
+        coEvery { todos.create(any(), any()) } returns 9L
+        val viewModel = CreateAchievementViewModel(fakeRepository(), todoRepository = todos)
+        viewModel.onTiersEnabledChange(true) // no Gold — invalid for an achievement
+        viewModel.onKindChange(ItemKind.TODO)
+        viewModel.onNameChange("Call mum")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { todos.create("Call mum", PeriodType.DAILY) }
     }
 }
