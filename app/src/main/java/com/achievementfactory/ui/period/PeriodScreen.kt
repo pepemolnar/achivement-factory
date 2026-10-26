@@ -1,4 +1,4 @@
-package com.achievementfactory.ui.daily
+package com.achievementfactory.ui.period
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +35,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.achievement.AchievementCard
 import com.achievementfactory.ui.celebration.CelebrationEvent
 import com.achievementfactory.ui.theme.MotionSpecs
@@ -43,24 +44,26 @@ import com.achievementfactory.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The Daily tab (NAV-04, TRACK-02, D-05): renders live Room data as neutral cards, groups
- * completed items under a Done divider, and shows the two-line empty state when there is
- * nothing to show. [onCreateClick] navigates to the creation screen (wired in `AppNavHost`).
- * [onIncrement]/[onLongPress] forward the whole-card tap/long-press gestures (D-01–D-03).
- * [undoRequests] is a one-shot event stream, not state (PITFALLS 8) — each emission raises the
- * undo snackbar exactly once, never shown again on rotation/process restoration. [celebrations] is
- * the same one-shot pattern (CELEB-04): each `CelebrationEvent.Completed` is tracked in local
- * composable state keyed by achievement id — so more than one card can celebrate at once — and
- * forwarded into that specific `AchievementCard`, until the animation's own final stage calls
- * [onCelebrationSettled], which both clears the local entry and releases the id from
- * `DailyViewModel`'s held-back set (D-06). The card's reorder into Done then plays through
- * `Modifier.animateItem` with `MotionSpecs.cardSink`, collapsed under reduced motion the same way
- * every other stage is (D-25).
+ * One period tab — Daily, Weekly or Monthly (NAV-01, NAV-04, TRACK-02, D-05): renders live Room
+ * data as neutral cards, groups completed items under a Done divider, and shows the two-line
+ * empty state when there is nothing to show. [bottomBar] is the tab switcher `AppNavHost` slots
+ * in, so all three tabs share this one `Scaffold` rather than nesting one inside another.
+ * [onCreateClick] opens the creation screen pre-set to this tab's [periodType].
+ *
+ * [undoRequests] and [celebrations] are one-shot event streams, not state (PITFALLS 8, CELEB-04)
+ * — each emission raises the snackbar / plays the celebration exactly once, never again on
+ * rotation or process restoration. Each celebration is tracked in local composable state keyed by
+ * achievement id — so more than one card can celebrate at once — and forwarded into that card
+ * until the card reports it settled; a settle report for an event that has since been replaced by
+ * a newer one for the same card (a tier upgrade landing mid-completion) does not remove the newer
+ * one. Callers must re-key this composable per tab (`key(periodType)`) so that state — the
+ * snackbar host, the active-celebration map — never leaks from one tab into another.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DailyScreen(
-    uiState: DailyUiState,
+fun PeriodScreen(
+    periodType: PeriodType,
+    uiState: PeriodUiState,
     onCreateClick: () -> Unit,
     onIncrement: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
@@ -68,10 +71,11 @@ fun DailyScreen(
     onUndo: (UndoToken) -> Unit,
     celebrations: Flow<CelebrationEvent>,
     onCelebrationSettled: (Long) -> Unit,
+    bottomBar: @Composable () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val activeCelebrations = remember { mutableStateMapOf<Long, CelebrationEvent.Completed>() }
+    val activeCelebrations = remember { mutableStateMapOf<Long, CelebrationEvent>() }
 
     LaunchedEffect(undoRequests, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -91,16 +95,21 @@ fun DailyScreen(
     LaunchedEffect(celebrations, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             celebrations.collect { event ->
-                if (event is CelebrationEvent.Completed) {
-                    activeCelebrations[event.achievementId] = event
-                }
+                activeCelebrations[event.achievementId] = event
             }
         }
     }
 
+    val settle: (CelebrationEvent) -> Unit = { event ->
+        if (activeCelebrations[event.achievementId] == event) {
+            activeCelebrations.remove(event.achievementId)
+        }
+        onCelebrationSettled(event.achievementId)
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(text = "Daily", style = MaterialTheme.typography.headlineSmall) })
+            TopAppBar(title = { Text(text = periodType.tabLabel(), style = MaterialTheme.typography.headlineSmall) })
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateClick) {
@@ -108,27 +117,32 @@ fun DailyScreen(
             }
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        bottomBar = bottomBar,
     ) { innerPadding ->
         when (uiState) {
-            is DailyUiState.Loading -> LoadingBody(innerPadding)
-            is DailyUiState.Error -> ErrorBody(innerPadding, uiState.message)
-            is DailyUiState.Content -> if (uiState.isEmpty) {
-                EmptyBody(innerPadding)
+            is PeriodUiState.Loading -> LoadingBody(innerPadding)
+            is PeriodUiState.Error -> ErrorBody(innerPadding, uiState.message)
+            is PeriodUiState.Content -> if (uiState.isEmpty) {
+                EmptyBody(innerPadding, periodType)
             } else {
-                DailyList(
+                PeriodList(
                     innerPadding = innerPadding,
                     content = uiState,
                     onIncrement = onIncrement,
                     onLongPress = onLongPress,
                     activeCelebrations = activeCelebrations,
-                    onCelebrationSettled = { id ->
-                        activeCelebrations.remove(id)
-                        onCelebrationSettled(id)
-                    },
+                    onCelebrationSettled = settle,
                 )
             }
         }
     }
+}
+
+/** The tab's title and its label in the tab switcher. */
+fun PeriodType.tabLabel(): String = when (this) {
+    PeriodType.DAILY -> "Daily"
+    PeriodType.WEEKLY -> "Weekly"
+    PeriodType.MONTHLY -> "Monthly"
 }
 
 @Composable
@@ -157,14 +171,14 @@ private fun ErrorBody(innerPadding: PaddingValues, message: String) {
 
 /** The empty state (NAV-04, D-20): exactly two lines, no illustration, no starter suggestions. */
 @Composable
-private fun EmptyBody(innerPadding: PaddingValues) {
+private fun EmptyBody(innerPadding: PaddingValues, periodType: PeriodType) {
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "No achievements yet",
+                text = "No ${periodType.tabLabel().lowercase()} achievements yet",
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
             )
@@ -178,13 +192,13 @@ private fun EmptyBody(innerPadding: PaddingValues) {
 }
 
 @Composable
-private fun DailyList(
+private fun PeriodList(
     innerPadding: PaddingValues,
-    content: DailyUiState.Content,
+    content: PeriodUiState.Content,
     onIncrement: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
-    activeCelebrations: Map<Long, CelebrationEvent.Completed>,
-    onCelebrationSettled: (Long) -> Unit,
+    activeCelebrations: Map<Long, CelebrationEvent>,
+    onCelebrationSettled: (CelebrationEvent) -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
     val placementSpec = MotionSpecs.resolvePlacement(MotionSpecs.cardSink, reducedMotion)
@@ -205,7 +219,7 @@ private fun DailyList(
                 onIncrement = { onIncrement(achievement.id) },
                 onLongPress = { onLongPress(achievement.id) },
                 celebration = activeCelebrations[achievement.id],
-                onCelebrationSettled = { onCelebrationSettled(achievement.id) },
+                onCelebrationSettled = onCelebrationSettled,
                 modifier = Modifier.animateItem(placementSpec = placementSpec),
             )
         }
@@ -214,11 +228,15 @@ private fun DailyList(
             item(key = "done-divider") {
                 DoneSectionHeader()
             }
+            // Done cards celebrate too: a laddered achievement is pushed into Silver and Gold
+            // from here, and its tier-upgrade celebration (CELEB-02) plays on this card.
             items(content.done, key = { it.id }) { achievement ->
                 AchievementCard(
                     achievement = achievement,
                     onIncrement = { onIncrement(achievement.id) },
                     onLongPress = { onLongPress(achievement.id) },
+                    celebration = activeCelebrations[achievement.id],
+                    onCelebrationSettled = onCelebrationSettled,
                     modifier = Modifier.animateItem(placementSpec = placementSpec),
                 )
             }

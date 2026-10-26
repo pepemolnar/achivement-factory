@@ -44,8 +44,10 @@ class ReconcileStreaksUseCase(
 
     /**
      * Recomputes one achievement's cached streak. [currentKey] must be a key of [keyPeriodType]'s
-     * recurrence unit — every call site today resolves it from
-     * [com.achievementfactory.period.CurrentPeriodProvider.currentDailyKey], hence the default.
+     * recurrence unit, resolved from [com.achievementfactory.period.CurrentPeriodProvider.current]
+     * for that same type — `PeriodWatcher` runs one [runAll] per [PeriodType], and the repository's
+     * write paths pass the achievement's own type. The DAILY default is kept for the many call
+     * sites (and tests) that deal only in daily achievements.
      *
      * An achievement whose own `periodType` does not match [keyPeriodType] is skipped without
      * being written. That guard is the point: the row's period type used to be discarded
@@ -53,7 +55,7 @@ class ReconcileStreaksUseCase(
      * WEEKLY/MONTHLY this would have walked Monday-anchored keys one *day* at a time and pinned
      * every weekly streak at 1 forever, silently and with a plausible-looking number. Leaving the
      * cache visibly stale is a much better failure than writing a confidently wrong streak.
-     * Phase 2 must resolve a `currentKey` per recurrence unit and call this once per unit.
+     * Phase 2 resolves a `currentKey` per recurrence unit and calls this once per unit.
      */
     suspend fun runFor(
         achievementId: Long,

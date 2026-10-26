@@ -1,9 +1,9 @@
-package com.achievementfactory.ui.daily
+package com.achievementfactory.ui.period
 
 import app.cash.turbine.test
 import com.achievementfactory.data.achievement.AccentSwatch
 import com.achievementfactory.data.achievement.AchievementRepository
-import com.achievementfactory.domain.model.DailyAchievement
+import com.achievementfactory.domain.model.TrackedAchievement
 import com.achievementfactory.domain.model.IncrementOutcome
 import com.achievementfactory.domain.model.UndoToken
 import com.achievementfactory.period.PeriodKey
@@ -23,13 +23,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.achievementfactory.period.PeriodType
 
 /**
  * A plain JVM test (no Robolectric needed) — [AchievementRepository] is mocked with MockK, which
  * mocks final Kotlin classes with no extra Gradle config (CLAUDE.md "What NOT to Use").
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class DailyViewModelTest {
+class PeriodViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
@@ -43,7 +44,7 @@ class DailyViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun achievement(id: Long, isDone: Boolean) = DailyAchievement(
+    private fun achievement(id: Long, isDone: Boolean) = TrackedAchievement(
         id = id,
         name = "Achievement $id",
         icon = null,
@@ -58,12 +59,12 @@ class DailyViewModelTest {
     @Test
     fun uiState_emitsLoadingFirst() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flow { /* never emits — Loading persists */ }
+        every { repository.observePeriod(PeriodType.DAILY) } returns flow { /* never emits — Loading persists */ }
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.uiState.test {
-            assertEquals(DailyUiState.Loading, awaitItem())
+            assertEquals(PeriodUiState.Loading, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -73,13 +74,13 @@ class DailyViewModelTest {
         val outstandingAchievement = achievement(id = 1, isDone = false)
         val doneAchievement = achievement(id = 2, isDone = true)
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flowOf(listOf(outstandingAchievement, doneAchievement))
+        every { repository.observePeriod(PeriodType.DAILY) } returns flowOf(listOf(outstandingAchievement, doneAchievement))
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.uiState.test {
-            assertEquals(DailyUiState.Loading, awaitItem())
-            val content = awaitItem() as DailyUiState.Content
+            assertEquals(PeriodUiState.Loading, awaitItem())
+            val content = awaitItem() as PeriodUiState.Content
             assertEquals(listOf(outstandingAchievement), content.outstanding)
             assertEquals(listOf(doneAchievement), content.done)
             cancelAndIgnoreRemainingEvents()
@@ -89,13 +90,13 @@ class DailyViewModelTest {
     @Test
     fun uiState_mapsUpstreamFailureToError() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flow { throw RuntimeException("boom") }
+        every { repository.observePeriod(PeriodType.DAILY) } returns flow { throw RuntimeException("boom") }
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.uiState.test {
-            assertEquals(DailyUiState.Loading, awaitItem())
-            val error = awaitItem() as DailyUiState.Error
+            assertEquals(PeriodUiState.Loading, awaitItem())
+            val error = awaitItem() as PeriodUiState.Error
             assertEquals(
                 "Couldn't load your achievements. Restart the app to try again.",
                 error.message,
@@ -107,7 +108,7 @@ class DailyViewModelTest {
     @Test
     fun onIncrement_emitsExactlyOneUndoTokenPerCall() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flowOf(emptyList())
+        every { repository.observePeriod(PeriodType.DAILY) } returns flowOf(emptyList())
         val expectedToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1)
         coEvery { repository.increment(1L) } returns IncrementOutcome(
             newCount = 1,
@@ -117,7 +118,7 @@ class DailyViewModelTest {
             undoToken = expectedToken,
         )
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.undoRequests.test {
             viewModel.onIncrement(1L)
@@ -136,7 +137,7 @@ class DailyViewModelTest {
     @Test
     fun onIncrement_whenTheWriteThrows_isSwallowed_andTheNextTapStillWorks() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flowOf(emptyList())
+        every { repository.observePeriod(PeriodType.DAILY) } returns flowOf(emptyList())
         val expectedToken = UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1)
         coEvery { repository.increment(1L) } throws RuntimeException("SQLiteFullException") andThen
             IncrementOutcome(
@@ -147,7 +148,7 @@ class DailyViewModelTest {
                 undoToken = expectedToken,
             )
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.undoRequests.test {
             viewModel.onIncrement(1L)
@@ -163,16 +164,16 @@ class DailyViewModelTest {
     @Test
     fun onUndo_whenTheReversalThrows_isSwallowed() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        every { repository.observeDaily() } returns flowOf(emptyList())
+        every { repository.observePeriod(PeriodType.DAILY) } returns flowOf(emptyList())
         coEvery { repository.undo(any()) } throws RuntimeException("SQLiteDatabaseCorruptException")
 
-        val viewModel = DailyViewModel(repository)
+        val viewModel = PeriodViewModel(repository)
 
         viewModel.onUndo(UndoToken(achievementId = 1L, periodKey = PeriodKey("2026-08-13"), expectedCount = 1))
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Reaching here at all is the assertion: an unguarded launch would have propagated.
-        assertEquals(DailyUiState.Loading, viewModel.uiState.value)
+        assertEquals(PeriodUiState.Loading, viewModel.uiState.value)
     }
 
     @Test
@@ -180,7 +181,7 @@ class DailyViewModelTest {
         val heldBackDone = achievement(id = 1, isDone = true)
         val ordinaryDone = achievement(id = 2, isDone = true)
 
-        val content = DailyUiState.Content.partition(
+        val content = PeriodUiState.Content.partition(
             achievements = listOf(heldBackDone, ordinaryDone),
             heldBackIds = setOf(1L),
         )

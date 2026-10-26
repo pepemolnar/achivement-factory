@@ -17,6 +17,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -24,12 +27,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.achievementfactory.data.achievement.AccentSwatch
+import com.achievementfactory.period.PeriodType
+import com.achievementfactory.ui.period.tabLabel
 import com.achievementfactory.ui.theme.Spacing
 
 /**
  * The full-screen achievement-creation form (D-14) — deliberately not a bottom sheet, so the
- * same layout is reusable by Phase 3's edit mode and extensible with Phase 2's graded-threshold
- * fields inside [AdvancedSection] without a redesign.
+ * same layout is reusable by Phase 3's edit mode. The period picker sits in the main form (every
+ * achievement has exactly one period, and it cannot change after creation), while the optional
+ * tier ladder lives inside [AdvancedSection] next to the counter target (D-19).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +47,11 @@ fun CreateAchievementScreen(
     onTargetChange: (String) -> Unit,
     onToggleAdvanced: () -> Unit,
     onSave: () -> Unit,
+    onPeriodTypeChange: (PeriodType) -> Unit = {},
+    onTiersEnabledChange: (Boolean) -> Unit = {},
+    onBronzeChange: (String) -> Unit = {},
+    onSilverChange: (String) -> Unit = {},
+    onGoldChange: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -108,14 +119,59 @@ fun CreateAchievementScreen(
 
             AccentSwatchPicker(selected = uiState.accent, onSelect = onAccentChange)
 
+            PeriodPicker(selected = uiState.periodType, onSelect = onPeriodTypeChange)
+
             Column(modifier = Modifier.padding(top = Spacing.lg)) {
                 AdvancedSection(
                     expanded = uiState.advancedExpanded,
                     targetInput = uiState.targetInput,
                     onToggle = onToggleAdvanced,
                     onTargetChange = onTargetChange,
+                    tiersEnabled = uiState.tiersEnabled,
+                    bronzeInput = uiState.bronzeInput,
+                    silverInput = uiState.silverInput,
+                    goldInput = uiState.goldInput,
+                    tierError = uiState.tierError,
+                    onTiersEnabledChange = onTiersEnabledChange,
+                    onBronzeChange = onBronzeChange,
+                    onSilverChange = onSilverChange,
+                    onGoldChange = onGoldChange,
                 )
             }
         }
+    }
+}
+
+/**
+ * Daily / Weekly / Monthly (PERIOD-02, PERIOD-03) as one single-choice segmented row, in the same
+ * order as the tab bar. Weeks run Monday–Sunday and months are calendar months; the caption says
+ * so, because "weekly" alone does not.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PeriodPicker(selected: PeriodType, onSelect: (PeriodType) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(text = "Repeats", style = MaterialTheme.typography.labelLarge)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            val options = PeriodType.entries
+            options.forEachIndexed { index, type ->
+                SegmentedButton(
+                    selected = type == selected,
+                    onClick = { onSelect(type) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                ) {
+                    Text(type.tabLabel())
+                }
+            }
+        }
+        Text(
+            text = when (selected) {
+                PeriodType.DAILY -> "Resets every day at midnight."
+                PeriodType.WEEKLY -> "Resets every Monday. Weeks run Monday to Sunday."
+                PeriodType.MONTHLY -> "Resets on the 1st of every month."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

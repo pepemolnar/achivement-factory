@@ -24,6 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 import java.time.ZoneId
+import com.achievementfactory.period.PeriodType
 
 /**
  * Runs on the JVM via Robolectric against an in-memory Room database with a fixed [AppClock] —
@@ -90,7 +91,7 @@ class AchievementRepositoryTest {
         database.achievementDao().insert(sampleAchievement("Read"))
         database.achievementDao().insert(sampleAchievement("Run"))
 
-        val result = repository.observeDaily().first()
+        val result = repository.observePeriod(PeriodType.DAILY).first()
 
         assertEquals(2, result.size)
         assertTrue(result.all { it.count == 0 && !it.isDone })
@@ -101,7 +102,7 @@ class AchievementRepositoryTest {
         val id = database.achievementDao().insert(sampleAchievement("Read"))
         insertProgress(id, today.toString(), count = 2, done = false)
 
-        val result = repository.observeDaily().first()
+        val result = repository.observePeriod(PeriodType.DAILY).first()
 
         assertEquals(2, result.single().count)
         assertFalse(result.single().isDone)
@@ -112,7 +113,7 @@ class AchievementRepositoryTest {
         val id = database.achievementDao().insert(sampleAchievement("Read"))
         insertProgress(id, today.toString(), count = 3, done = true)
 
-        val result = repository.observeDaily().first()
+        val result = repository.observePeriod(PeriodType.DAILY).first()
 
         assertTrue(result.single().isDone)
     }
@@ -122,7 +123,7 @@ class AchievementRepositoryTest {
         val id = database.achievementDao().insert(sampleAchievement("Read"))
         insertProgress(id, today.minusDays(1).toString(), count = 5, done = true)
 
-        val result = repository.observeDaily().first()
+        val result = repository.observePeriod(PeriodType.DAILY).first()
 
         assertEquals(0, result.single().count)
         assertFalse(result.single().isDone)
@@ -130,7 +131,7 @@ class AchievementRepositoryTest {
 
     @Test
     fun observeDaily_emitsAgain_whenAnAchievementIsInserted_withNoExplicitRefreshCall() = runBlocking {
-        repository.observeDaily().test {
+        repository.observePeriod(PeriodType.DAILY).test {
             assertEquals(0, awaitItem().size)
 
             repository.create("Read", null, AccentSwatch.SKY, target = 1)
@@ -146,7 +147,7 @@ class AchievementRepositoryTest {
     /**
      * `accentSwatch` is a plain TEXT column with no CHECK constraint, so an unrecognized value is
      * reachable via a hand-edited row, a future migration, or a renamed swatch. Throwing here is
-     * unrecoverable rather than merely wrong: the exception surfaces in `DailyViewModel.uiState`'s
+     * unrecoverable rather than merely wrong: the exception surfaces in `PeriodViewModel.uiState`'s
      * `.catch`, and `catch` *terminates* the upstream flow — the Daily tab then shows
      * "Restart the app to try again" for as long as the row exists, and restarting does not help.
      */
@@ -157,7 +158,7 @@ class AchievementRepositoryTest {
             "UPDATE achievements SET accentSwatch = 'BLUE' WHERE id = $id"
         )
 
-        val result = repository.observeDaily().first()
+        val result = repository.observePeriod(PeriodType.DAILY).first()
 
         assertEquals(1, result.size)
         assertEquals(AccentSwatch.INDIGO, result.single().accent)

@@ -18,10 +18,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.achievementfactory.period.PeriodType
+import com.achievementfactory.domain.tier.TierLadder
 
 /**
  * A plain JVM test — [AchievementRepository] is stubbed with MockK as a test double (the same
- * concrete-class-mocking convention `DailyViewModelTest` established, since the class is final
+ * concrete-class-mocking convention `PeriodViewModelTest` established, since the class is final
  * and not meant to grow an interface for this alone).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -41,7 +43,7 @@ class CreateAchievementViewModelTest {
 
     private fun fakeRepository(): AchievementRepository {
         val repository = mockk<AchievementRepository>()
-        coEvery { repository.create(any(), any(), any(), any()) } returns 1L
+        coEvery { repository.create(any(), any(), any(), any(), any(), any()) } returns 1L
         return repository
     }
 
@@ -69,7 +71,7 @@ class CreateAchievementViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("Name is required.", viewModel.uiState.value.nameError)
-        coVerify(exactly = 0) { repository.create(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.create(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -82,7 +84,7 @@ class CreateAchievementViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("Name is required.", viewModel.uiState.value.nameError)
-        coVerify(exactly = 0) { repository.create(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.create(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -94,7 +96,7 @@ class CreateAchievementViewModelTest {
         viewModel.onSave()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 1) }
+        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 1, PeriodType.DAILY, null) }
         assertTrue(viewModel.uiState.value.saved)
     }
 
@@ -119,7 +121,7 @@ class CreateAchievementViewModelTest {
         viewModel.onSave()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.create("Read a book", null, AccentSwatch.INDIGO, 1) }
+        coVerify(exactly = 1) { repository.create("Read a book", null, AccentSwatch.INDIGO, 1, PeriodType.DAILY, null) }
     }
 
     @Test
@@ -209,7 +211,7 @@ class CreateAchievementViewModelTest {
         viewModel.onSave()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 999) }
+        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 999, PeriodType.DAILY, null) }
     }
 
     /**
@@ -221,7 +223,7 @@ class CreateAchievementViewModelTest {
     @Test
     fun onSave_whenTheWriteThrows_surfacesAnErrorAndLeavesTheButtonUsableForARetry() = runTest(testDispatcher) {
         val repository = mockk<AchievementRepository>()
-        coEvery { repository.create(any(), any(), any(), any()) } throws
+        coEvery { repository.create(any(), any(), any(), any(), any(), any()) } throws
             RuntimeException("SQLiteFullException") andThen 1L
         val viewModel = CreateAchievementViewModel(repository)
         viewModel.onNameChange("Read")
@@ -236,7 +238,7 @@ class CreateAchievementViewModelTest {
         viewModel.onSave()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 2) { repository.create(any(), any(), any(), any()) }
+        coVerify(exactly = 2) { repository.create(any(), any(), any(), any(), any(), any()) }
         assertTrue(viewModel.uiState.value.saved)
         assertNull(viewModel.uiState.value.saveError)
     }
@@ -252,6 +254,134 @@ class CreateAchievementViewModelTest {
         viewModel.onSave()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.create(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { repository.create(any(), any(), any(), any(), any(), any()) }
+    }
+
+    // --- Phase 2: period picker and tier ladder ------------------------------------------------
+
+    @Test
+    fun initialPeriodType_comesFromTheTabTheFormWasOpenedFrom() {
+        val viewModel = CreateAchievementViewModel(fakeRepository(), PeriodType.WEEKLY)
+
+        assertEquals(PeriodType.WEEKLY, viewModel.uiState.value.periodType)
+    }
+
+    @Test
+    fun save_passesTheChosenPeriodTypeThrough() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+        viewModel.onPeriodTypeChange(PeriodType.MONTHLY)
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 1, PeriodType.MONTHLY, null) }
+    }
+
+    @Test
+    fun save_withAValidLadder_passesTheLadder() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onSilverChange("3")
+        viewModel.onGoldChange("5")
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            repository.create("Read", null, AccentSwatch.INDIGO, 1, PeriodType.DAILY, TierLadder(null, 3, 5))
+        }
+        assertTrue(viewModel.uiState.value.saved)
+    }
+
+    @Test
+    fun save_withTiersOff_ignoresWhateverIsInTheTierFields() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onBronzeChange("9")
+        viewModel.onTiersEnabledChange(false)
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.create("Read", null, AccentSwatch.INDIGO, 1, PeriodType.DAILY, null) }
+    }
+
+    @Test
+    fun save_withAnInvalidLadder_showsTheTierError_opensAdvanced_andDoesNotSave() = runTest(testDispatcher) {
+        val repository = fakeRepository()
+        val viewModel = CreateAchievementViewModel(repository)
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onBronzeChange("1")
+        viewModel.onGoldChange("5") // Bronze without Silver skips a level
+
+        viewModel.onSave()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("Add Silver too — Bronze can't skip a level.", state.tierError)
+        assertTrue(state.advancedExpanded)
+        assertFalse(state.saved)
+        coVerify(exactly = 0) { repository.create(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun save_withTiersOnButNoGold_reportsMissingGold() = runTest(testDispatcher) {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onSilverChange("3")
+
+        viewModel.onSave()
+
+        assertEquals("Gold is required — every ladder tops out at Gold.", viewModel.uiState.value.tierError)
+    }
+
+    @Test
+    fun save_withNonIncreasingThresholds_reportsIt() = runTest(testDispatcher) {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onSilverChange("5")
+        viewModel.onGoldChange("5")
+
+        viewModel.onSave()
+
+        assertEquals("Each medal needs a higher count than the one below it.", viewModel.uiState.value.tierError)
+    }
+
+    @Test
+    fun save_withBothABlankNameAndABadLadder_reportsBothAtOnce() = runTest(testDispatcher) {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onTiersEnabledChange(true)
+
+        viewModel.onSave()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.nameError != null)
+        assertTrue(state.tierError != null)
+    }
+
+    @Test
+    fun tierFields_rejectNonDigitsAndMoreThanThreeDigits_andEditingClearsTheError() {
+        val viewModel = CreateAchievementViewModel(fakeRepository())
+        viewModel.onNameChange("Read")
+        viewModel.onTiersEnabledChange(true)
+        viewModel.onSave() // no Gold → error
+
+        viewModel.onGoldChange("12a")
+        viewModel.onGoldChange("1234")
+        assertEquals("", viewModel.uiState.value.goldInput)
+        assertTrue(viewModel.uiState.value.tierError != null)
+
+        viewModel.onGoldChange("12")
+        assertEquals("12", viewModel.uiState.value.goldInput)
+        assertEquals(null, viewModel.uiState.value.tierError)
     }
 }

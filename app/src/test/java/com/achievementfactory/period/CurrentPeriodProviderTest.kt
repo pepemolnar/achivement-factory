@@ -69,4 +69,50 @@ class CurrentPeriodProviderTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun weeklyKey_isThatWeeksMonday_andMovesOnlyWhenAMondayArrives() = runTest {
+        currentDate.set(LocalDate.of(2026, 8, 15)) // Saturday
+        val provider = CurrentPeriodProvider(periodEngine)
+
+        provider.current(PeriodType.WEEKLY).test {
+            assertEquals(PeriodKey("2026-08-10"), awaitItem())
+
+            currentDate.set(LocalDate.of(2026, 8, 16)) // Sunday — same Monday-start week
+            provider.refresh()
+            expectNoEvents()
+
+            currentDate.set(LocalDate.of(2026, 8, 17)) // Monday — a new week
+            provider.refresh()
+            assertEquals(PeriodKey("2026-08-17"), awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun monthlyKey_movesOnlyWhenTheCalendarMonthChanges() = runTest {
+        currentDate.set(LocalDate.of(2026, 1, 30))
+        val provider = CurrentPeriodProvider(periodEngine)
+
+        provider.current(PeriodType.MONTHLY).test {
+            assertEquals(PeriodKey("2026-01"), awaitItem())
+
+            currentDate.set(LocalDate.of(2026, 1, 31))
+            provider.refresh()
+            expectNoEvents()
+
+            currentDate.set(LocalDate.of(2026, 2, 1))
+            provider.refresh()
+            assertEquals(PeriodKey("2026-02"), awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun currentDailyKey_isTheSameFlowAsCurrentDaily() {
+        val provider = CurrentPeriodProvider(periodEngine)
+        assertEquals(provider.current(PeriodType.DAILY).value, provider.currentDailyKey.value)
+    }
 }

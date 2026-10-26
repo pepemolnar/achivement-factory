@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The detail screen's ViewModel — same `stateIn`/`WhileSubscribed(5_000)` shape as
- * [com.achievementfactory.ui.daily.DailyViewModel]. [Factory] reads `achievementId` off the
+ * [com.achievementfactory.ui.period.PeriodViewModel]. [Factory] reads `achievementId` off the
  * `SavedStateHandle` via `createSavedStateHandle()`, so the route argument declared in
  * `AppNavHost` reaches this constructor with no custom assisted-injection mechanism.
  */

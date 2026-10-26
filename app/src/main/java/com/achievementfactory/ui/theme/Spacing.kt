@@ -23,4 +23,6 @@ object Spacing {
     val iconClusterSize: Dp = 40.dp
     val ringStrokeWidth: Dp = 3.dp
     val flameBadgeSize: Dp = 16.dp
+    val burstParticleSize: Dp = 6.dp
+    val tierBadgeIconSize: Dp = 14.dp
 }

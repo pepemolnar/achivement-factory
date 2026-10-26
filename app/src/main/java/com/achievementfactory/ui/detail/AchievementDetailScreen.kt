@@ -26,13 +26,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import com.achievementfactory.domain.model.AchievementDetail
+import com.achievementfactory.domain.tier.TierLadder
+import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.achievement.AchievementGlyph
 import com.achievementfactory.ui.achievement.ProgressRing
+import com.achievementfactory.ui.achievement.TierBadge
 import com.achievementfactory.ui.theme.Spacing
 import com.achievementfactory.ui.theme.color
 
 /**
- * The read-only detail screen (TRACK-08, D-03, D-13): identity, today's progress, current
+ * The read-only detail screen (TRACK-08, D-03, D-13): identity, the current period's progress
+ * (today, this week or this month) and tier reached, the tier ladder if one is configured, current
  * streak and — for the first time anywhere in the app — best streak. Reached by long-pressing a
  * card. Carries no input field and no button beyond its own back arrow in this phase; a later
  * phase is expected to layer controls onto this same file without a navigation change.
@@ -91,7 +95,7 @@ private fun NotFoundBody(innerPadding: PaddingValues) {
 private fun DetailBody(innerPadding: PaddingValues, detail: AchievementDetail) {
     val accentColor = detail.accent.color()
     val progress = if (detail.target > 0) {
-        detail.todayCount.toFloat() / detail.target.toFloat()
+        detail.periodCount.toFloat() / detail.target.toFloat()
     } else {
         0f
     }
@@ -129,10 +133,12 @@ private fun DetailBody(innerPadding: PaddingValues, detail: AchievementDetail) {
 
         // Target-1 achievements read as a boolean tick, matching the card's own rule — no
         // fraction is shown for them here either.
+        val periodPhrase = detail.periodType.currentPeriodPhrase()
         val progressText = when {
-            detail.target > 1 -> "${detail.todayCount}/${detail.target}"
-            detail.isDone -> "Done today"
-            else -> "Not done yet"
+            detail.tiers != null && detail.tiers.gold > 1 -> "${detail.periodCount} $periodPhrase"
+            detail.target > 1 -> "${detail.periodCount}/${detail.target} $periodPhrase"
+            detail.isDone -> "Done $periodPhrase"
+            else -> "Not done yet $periodPhrase"
         }
         Text(
             text = progressText,
@@ -141,12 +147,18 @@ private fun DetailBody(innerPadding: PaddingValues, detail: AchievementDetail) {
             modifier = Modifier.padding(top = Spacing.xs),
         )
 
+        detail.tierReached?.let { tier ->
+            TierBadge(tier = tier, modifier = Modifier.padding(top = Spacing.sm))
+        }
+
+        detail.tiers?.let { ladder -> TierLadderSummary(ladder) }
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.xl),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             StreakStat(
-                label = "Current streak",
+                label = "Current streak (${detail.periodType.streakUnit()})",
                 value = detail.currentStreak.toString(),
                 valueStyle = MaterialTheme.typography.headlineSmall,
             )
@@ -174,4 +186,27 @@ fun StreakStat(label: String, value: String, valueStyle: TextStyle) {
         )
         Text(text = value, style = valueStyle)
     }
+}
+
+/** The configured thresholds, lowest first — e.g. "Silver 3 · Gold 5" (TIER-02). */
+@Composable
+private fun TierLadderSummary(ladder: TierLadder) {
+    Text(
+        text = ladder.tiers.joinToString(separator = " · ") { tier -> "${tier.displayName} ${ladder.thresholdOf(tier)}" },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = Spacing.xs),
+    )
+}
+
+private fun PeriodType.currentPeriodPhrase(): String = when (this) {
+    PeriodType.DAILY -> "today"
+    PeriodType.WEEKLY -> "this week"
+    PeriodType.MONTHLY -> "this month"
+}
+
+private fun PeriodType.streakUnit(): String = when (this) {
+    PeriodType.DAILY -> "days"
+    PeriodType.WEEKLY -> "weeks"
+    PeriodType.MONTHLY -> "months"
 }

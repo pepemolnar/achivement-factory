@@ -22,7 +22,7 @@ import org.junit.Test
 
 /**
  * A plain JVM test (no Robolectric needed) — [AchievementRepository] is mocked with MockK,
- * continuing [com.achievementfactory.ui.daily.DailyViewModelTest]'s convention.
+ * continuing [com.achievementfactory.ui.period.PeriodViewModelTest]'s convention.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AchievementDetailViewModelTest {
@@ -45,7 +45,7 @@ class AchievementDetailViewModelTest {
         icon = null,
         accent = AccentSwatch.SKY,
         target = 1,
-        todayCount = 0,
+        periodCount = 0,
         isDone = false,
         currentStreak = streak,
         bestStreak = streak,

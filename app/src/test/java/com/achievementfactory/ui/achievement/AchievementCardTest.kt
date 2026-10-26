@@ -3,7 +3,7 @@ package com.achievementfactory.ui.achievement
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import com.achievementfactory.data.achievement.AccentSwatch
-import com.achievementfactory.domain.model.DailyAchievement
+import com.achievementfactory.domain.model.TrackedAchievement
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,7 +20,7 @@ class AchievementCardTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun achievement(streak: Int) = DailyAchievement(
+    private fun achievement(streak: Int) = TrackedAchievement(
         id = 1L,
         name = "Read",
         icon = null,

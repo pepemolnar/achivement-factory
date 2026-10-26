@@ -3,7 +3,7 @@ package com.achievementfactory.ui.detail
 import com.achievementfactory.domain.model.AchievementDetail
 
 /**
- * The detail screen's render state — mirrors the shape of [com.achievementfactory.ui.daily.DailyUiState]
+ * The detail screen's render state — mirrors the shape of [com.achievementfactory.ui.period.PeriodUiState]
  * (`Loading`/content/terminal-case) so later screens in this project keep inheriting one
  * ViewModel/UiState convention rather than reinventing it per screen.
  */
