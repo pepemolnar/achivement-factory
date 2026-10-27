@@ -16,7 +16,8 @@ import kotlinx.coroutines.launch
  * Notices the day changing underneath a running process (PERIOD-04, PERIOD-06): system
  * broadcasts for a date change, a manual clock edit, and a timezone change, plus process resume,
  * all funnel into the same [onSignal] — [CurrentPeriodProvider.refresh] followed by relaunching
- * [ReconcileStreaksUseCase.runAll] on [applicationScope]. Three signals, one mechanism.
+ * [ReconcileStreaksUseCase.runAll] for every [PeriodType] on [applicationScope]. Three signals, one
+ * mechanism.
  *
  * Per D-27 there is no cross-check against a second clock source or unusual-jump heuristic
  * anywhere here — every signal is a genuine recomputation from the trusted device clock.
@@ -39,9 +40,19 @@ class PeriodWatcher(
         override fun onStart(owner: LifecycleOwner) = onSignal()
     }
 
+    /**
+     * One reconciliation pass per recurrence unit, each with its own current key — a weekly
+     * streak is walked Monday-to-Monday against the current week's key, never against today's
+     * date (see [ReconcileStreaksUseCase.runFor]'s period-type guard). Run sequentially inside a
+     * single launch so the three passes never interleave with each other.
+     */
     private fun onSignal() {
         currentPeriodProvider.refresh()
-        applicationScope.launch { reconcileStreaks.runAll(currentPeriodProvider.currentDailyKey.value) }
+        applicationScope.launch {
+            PeriodType.entries.forEach { type ->
+                reconcileStreaks.runAll(currentPeriodProvider.current(type).value, type)
+            }
+        }
     }
 
     /**

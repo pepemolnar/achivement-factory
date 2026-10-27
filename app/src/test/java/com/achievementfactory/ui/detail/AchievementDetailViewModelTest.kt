@@ -19,10 +19,12 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import io.mockk.coVerify
+import io.mockk.coEvery
 
 /**
  * A plain JVM test (no Robolectric needed) — [AchievementRepository] is mocked with MockK,
- * continuing [com.achievementfactory.ui.daily.DailyViewModelTest]'s convention.
+ * continuing [com.achievementfactory.ui.period.PeriodViewModelTest]'s convention.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AchievementDetailViewModelTest {
@@ -45,7 +47,7 @@ class AchievementDetailViewModelTest {
         icon = null,
         accent = AccentSwatch.SKY,
         target = 1,
-        todayCount = 0,
+        periodCount = 0,
         isDone = false,
         currentStreak = streak,
         bestStreak = streak,
@@ -112,6 +114,40 @@ class AchievementDetailViewModelTest {
             val second = awaitItem() as AchievementDetailUiState.Content
             assertEquals(2, second.detail.currentStreak)
             cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    // --- Phase 3: archive from the detail screen ------------------------------------------------
+
+    @Test
+    fun onArchive_archives_thenAsksTheScreenToCloseExactlyOnce() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDetail(1L) } returns flowOf(detail())
+        coEvery { repository.archive(1L) } returns true
+
+        val viewModel = AchievementDetailViewModel(repository, achievementId = 1L)
+
+        viewModel.closeRequests.test {
+            viewModel.onArchive()
+            awaitItem()
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+        coVerify(exactly = 1) { repository.archive(1L) }
+    }
+
+    @Test
+    fun onArchive_thatFails_keepsTheScreenOpen() = runTest(testDispatcher) {
+        val repository = mockk<AchievementRepository>()
+        every { repository.observeDetail(1L) } returns flowOf(detail())
+        coEvery { repository.archive(1L) } throws RuntimeException("SQLiteFullException")
+
+        val viewModel = AchievementDetailViewModel(repository, achievementId = 1L)
+
+        viewModel.closeRequests.test {
+            viewModel.onArchive()
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
         }
     }
 }

@@ -23,6 +23,7 @@ import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicReference
+import com.achievementfactory.period.PeriodType
 
 /**
  * Proves PERIOD-04 end to end against a real (in-memory) Room database: an already-collected
@@ -99,7 +100,7 @@ class RolloverTest {
         val today = currentDate.get().toString()
         markDone(id, today, count = 1)
 
-        repository.observeDaily().test {
+        repository.observePeriod(PeriodType.DAILY).test {
             val beforeRollover = awaitItem()
             assertEquals(1, beforeRollover.single().count)
             assertTrue(beforeRollover.single().isDone)
@@ -132,7 +133,7 @@ class RolloverTest {
     fun increment_afterMidnightWithNoRefreshSignal_isVisibleToTheAlreadyCollectedReadFlow() = runBlocking {
         val id = createAchievement(target = 1)
 
-        repository.observeDaily().test {
+        repository.observePeriod(PeriodType.DAILY).test {
             assertEquals(0, awaitItem().single().count)
 
             // Midnight passes. Nothing has told the provider yet.
@@ -141,7 +142,12 @@ class RolloverTest {
             val outcome = repository.increment(id)!!
             assertEquals(1, outcome.newCount)
 
-            val afterIncrement = awaitItem()
+            // The write refreshes the provider first, so the flow may legitimately emit the new
+            // day's empty state before the write itself lands. What must hold is that the tap
+            // shows up — on the new day — without any further signal; Turbine's timeout fails the
+            // test if it never does.
+            var afterIncrement = awaitItem()
+            while (afterIncrement.single().count == 0) afterIncrement = awaitItem()
             assertEquals("the tap must be visible on the day it was written to", 1, afterIncrement.single().count)
             assertTrue(afterIncrement.single().isDone)
 
@@ -171,7 +177,7 @@ class RolloverTest {
             currentPeriodProvider.refresh()
 
             val afterRollover = awaitItem()
-            assertEquals(0, afterRollover?.todayCount)
+            assertEquals(0, afterRollover?.periodCount)
             assertFalse(afterRollover?.isDone == true)
 
             cancelAndIgnoreRemainingEvents()

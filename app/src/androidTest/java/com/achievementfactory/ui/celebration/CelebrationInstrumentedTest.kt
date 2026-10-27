@@ -84,7 +84,7 @@ class CelebrationInstrumentedTest {
      * does not try to pin it down, because the required outcome is the same either way:
      *
      *  - The emit happens *before* the recreation: the celebration is running, and recreating
-     *    disposes it. `DailyScreen`'s `activeCelebrations` is `remember`, not `rememberSaveable`,
+     *    disposes it. `PeriodScreen`'s `activeCelebrations` is `remember`, not `rememberSaveable`,
      *    so the new composition starts with no active celebration and there is nothing to replay.
      *  - The emit happens *after* the recreation: nothing is subscribed at that instant (the
      *    screen's collector runs under `repeatOnLifecycle(STARTED)`), so a zero-replay

@@ -3,25 +3,33 @@ package com.achievementfactory.data.achievement
 import androidx.room.withTransaction
 import com.achievementfactory.data.AppDatabase
 import com.achievementfactory.data.progress.ProgressDao
+import com.achievementfactory.data.progress.ProgressEntity
+import com.achievementfactory.domain.edit.ThresholdChangeRule
 import com.achievementfactory.domain.maintenance.ReconcileStreaksUseCase
+import com.achievementfactory.domain.model.AchievementDefinition
+import com.achievementfactory.domain.model.ArchivedAchievement
 import com.achievementfactory.domain.model.AchievementDetail
-import com.achievementfactory.domain.model.DailyAchievement
 import com.achievementfactory.domain.model.IncrementOutcome
+import com.achievementfactory.domain.model.TrackedAchievement
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.domain.model.UpdateResult
+import com.achievementfactory.domain.tier.Tier
+import com.achievementfactory.domain.tier.TierLadder
 import com.achievementfactory.period.AppClock
 import com.achievementfactory.period.CurrentPeriodProvider
-import com.achievementfactory.period.PeriodKey
 import com.achievementfactory.period.PeriodType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * The single read/write entry point between ViewModels and the DAOs (ARCHITECTURE.md
- * "Pattern 1"). [DailyAchievement] is the only type this repository exposes across the `ui/`
- * boundary — [AchievementEntity]/[com.achievementfactory.data.progress.ProgressEntity] never
- * cross it (T-01-09).
+ * "Pattern 1"). [TrackedAchievement] and [AchievementDetail] are the only types this repository
+ * exposes across the `ui/` boundary — [AchievementEntity]/[ProgressEntity] never cross it
+ * (T-01-09).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AchievementRepository(
@@ -37,194 +45,421 @@ class AchievementRepository(
 ) {
 
     /**
-     * Reactively joins the active daily achievements with the current day's progress rows.
-     * Re-subscribes to a fresh `progressDao.observeForPeriod` whenever
-     * [CurrentPeriodProvider.currentDailyKey] changes — the mechanism behind PERIOD-04: an app
-     * left open across local midnight shows yesterday's completed cards as not-done for the new
-     * day with no restart and no navigation. Achievements with no progress row for the current
-     * key map to `count = 0, isDone = false`; `isDone` is always read from the progress row's
-     * snapshotted `done` column, never recomputed from the achievement's *current*
-     * `counterTarget`, so a closed period's result stays immutable even if the achievement is
-     * later changed (TRACK-10, D-28).
+     * Reactively joins the active achievements of [periodType] with the current period's
+     * progress rows. Re-subscribes to a fresh `progressDao.observeForPeriod` whenever
+     * [CurrentPeriodProvider.current] for [periodType] changes — the mechanism behind PERIOD-04:
+     * an app left open across local midnight (or across Sunday→Monday, or a month boundary) shows
+     * the previous period's completed cards as not-done for the new one with no restart and no
+     * navigation. Achievements with no progress row for the current key map to
+     * `count = 0, isDone = false, tierReached = null`; `isDone` and `tierReached` are always read
+     * from the progress row's snapshotted columns, never recomputed from the achievement's
+     * *current* target/thresholds, so a closed period's result stays immutable (TRACK-10, D-28).
+     *
+     * `observeForPeriod` matches on the key string alone, and a weekly key (that week's Monday)
+     * is textually identical to the daily key for that Monday. That is harmless here: rows are
+     * joined by achievement id against achievements of [periodType] only, so a daily
+     * achievement's row can never be attached to a weekly card.
      */
-    fun observeDaily(): Flow<List<DailyAchievement>> =
-        currentPeriodProvider.currentDailyKey.flatMapLatest { key ->
+    fun observePeriod(periodType: PeriodType): Flow<List<TrackedAchievement>> =
+        currentPeriodProvider.current(periodType).flatMapLatest { key ->
             combine(
-                achievementDao.observeActive(PeriodType.DAILY.name),
+                achievementDao.observeActive(periodType.name),
                 progressDao.observeForPeriod(key.value),
             ) { achievements, progressRows ->
                 val progressByAchievementId = progressRows.associateBy { it.achievementId }
                 achievements.map { achievement ->
-                    val progress = progressByAchievementId[achievement.id]
-                    DailyAchievement(
-                        id = achievement.id,
-                        name = achievement.name,
-                        icon = achievement.icon,
-                        accent = swatchOf(achievement.accentSwatch),
-                        target = achievement.counterTarget,
-                        count = progress?.count ?: 0,
-                        isDone = progress?.done ?: false,
-                        currentStreak = achievement.currentStreak,
-                        bestStreak = achievement.bestStreak,
-                    )
+                    achievement.toTracked(periodType, progressByAchievementId[achievement.id])
                 }
             }
         }
 
     /**
-     * The read-only detail-screen source (TRACK-08, D-13) — the same join shape as
-     * [observeDaily] narrowed to one achievement, re-subscribing on the same
-     * [CurrentPeriodProvider.currentDailyKey] signal. Emits `null` when [id] does not resolve to
-     * a row, which [com.achievementfactory.ui.detail.AchievementDetailViewModel] maps to its
-     * `NotFound` state. This is the only read path that ever surfaces [AchievementDetail.bestStreak].
+     * The read-only detail-screen source (TRACK-08, D-13), keyed to the current period of the
+     * achievement's *own* period type — today for a daily achievement, this week for a weekly one.
+     * Emits `null` when [id] does not resolve to a row, which
+     * [com.achievementfactory.ui.detail.AchievementDetailViewModel] maps to its `NotFound` state.
+     * This is the only read path that ever surfaces [AchievementDetail.bestStreak].
      */
     fun observeDetail(id: Long): Flow<AchievementDetail?> =
-        currentPeriodProvider.currentDailyKey.flatMapLatest { key ->
-            combine(
-                achievementDao.observeById(id),
-                progressDao.observeForPeriod(key.value),
-            ) { achievement, progressRows ->
-                if (achievement == null) return@combine null
-                val progress = progressRows.firstOrNull { it.achievementId == achievement.id }
-                AchievementDetail(
+        achievementDao.observeById(id).flatMapLatest { achievement ->
+            if (achievement == null) return@flatMapLatest flowOf<AchievementDetail?>(null)
+            val periodType = periodTypeOf(achievement) ?: PeriodType.DAILY
+            currentPeriodProvider.current(periodType).flatMapLatest { key ->
+                progressDao.observeFor(achievement.id, key.value).map { progress ->
+                    achievement.toDetail(periodType, progress)
+                }
+            }
+        }
+
+    /**
+     * Creates a new achievement with zeroed streaks. Returns its id.
+     *
+     * When [tiers] is given, its [TierLadder.streakThreshold] — the lowest configured tier — is what
+     * gets stored as `counterTarget`, and [target] is ignored. For a laddered achievement the
+     * progress row's `done` column therefore means "this period counts toward the streak", which
+     * keeps the `done` SQL in [ProgressDao] and the streak walk unchanged. Whether the card is
+     * *done* (Gold) is decided on read, from the snapshotted `tierReached` (TIER-06).
+     */
+    suspend fun create(
+        name: String,
+        icon: String?,
+        accent: AccentSwatch,
+        target: Int,
+        periodType: PeriodType = PeriodType.DAILY,
+        tiers: TierLadder? = null,
+    ): Long = database.withTransaction {
+        // New achievements go to the end of their tab (ACH-09). Read and insert share one
+        // transaction so two quick creates can't both claim the same position.
+        val nextPosition = (achievementDao.maxSortOrder(periodType.name) ?: -1) + 1
+        val entity = AchievementEntity(
+            name = name,
+            periodType = periodType.name,
+            icon = icon,
+            accentSwatch = accent.name,
+            counterTarget = tiers?.streakThreshold ?: target,
+            bronzeThreshold = tiers?.bronze,
+            silverThreshold = tiers?.silver,
+            goldThreshold = tiers?.gold,
+            createdAtEpochDay = clock.epochDay(),
+            currentStreak = 0,
+            bestStreak = 0,
+            streakCachedForPeriodKey = null,
+            sortOrder = nextPosition,
+        )
+        achievementDao.insert(entity)
+    }
+
+    /** The editable definition of one achievement, or null when [id] no longer resolves. */
+    suspend fun getDefinition(id: Long): AchievementDefinition? {
+        val achievement = achievementDao.getById(id) ?: return null
+        return AchievementDefinition(
+            id = achievement.id,
+            name = achievement.name,
+            icon = achievement.icon,
+            accent = swatchOf(achievement.accentSwatch),
+            periodType = periodTypeOf(achievement) ?: PeriodType.DAILY,
+            target = achievement.counterTarget,
+            tiers = achievement.ladder(),
+            archived = achievement.archived,
+        )
+    }
+
+    /**
+     * Edits an achievement (ACH-03, ACH-04, ACH-05). The period type is not a parameter at all —
+     * it cannot change after creation. Name, icon and colour always apply and never touch the
+     * streak. Thresholds go through [ThresholdChangeRule] inside the same transaction as the
+     * write, so nothing can make the streak (or "done") easier, whatever the caller checked.
+     *
+     * When the thresholds do change, the *current* period's progress row is re-snapshotted against
+     * them ([ProgressDao.resnapshot]) and the streak is reconciled, so the new rules apply to the
+     * period that is still open: raising today's target past today's count makes today not done
+     * yet. Closed periods are never rewritten (TRACK-10).
+     */
+    suspend fun update(
+        id: Long,
+        name: String,
+        icon: String?,
+        accent: AccentSwatch,
+        target: Int,
+        tiers: TierLadder?,
+    ): UpdateResult {
+        refreshForWrite()
+        return database.withTransaction<UpdateResult> {
+            val achievement = achievementDao.getById(id) ?: return@withTransaction UpdateResult.NotFound
+            val oldLadder = achievement.ladder()
+            val refusal = ThresholdChangeRule.check(
+                oldTarget = achievement.counterTarget,
+                oldLadder = oldLadder,
+                newTarget = target,
+                newLadder = tiers,
+            )
+            if (refusal != null) return@withTransaction UpdateResult.Refused(refusal)
+
+            achievementDao.updateAppearance(id, name, icon, accent.name)
+
+            val newCounterTarget = tiers?.streakThreshold ?: target
+            val thresholdsChanged = newCounterTarget != achievement.counterTarget || tiers != oldLadder
+            val periodType = periodTypeOf(achievement)
+            if (thresholdsChanged) {
+                achievementDao.updateThresholds(id, newCounterTarget, tiers?.bronze, tiers?.silver, tiers?.gold)
+                if (periodType != null) {
+                    val currentKey = currentPeriodProvider.current(periodType).value
+                    progressDao.resnapshot(id, currentKey.value, newCounterTarget, tiers?.bronze, tiers?.silver, tiers?.gold)
+                    reconcileStreaks.runFor(id, currentKey, force = true, keyPeriodType = periodType)
+                }
+            }
+            UpdateResult.Updated
+        }
+    }
+
+    /**
+     * Archives an achievement (ACH-06): it leaves its tab, and its whole history — progress log,
+     * best streak — stays exactly as it is. Reversible with [restore]. Returns false when [id] no
+     * longer resolves.
+     */
+    suspend fun archive(id: Long): Boolean = database.withTransaction<Boolean> {
+        val achievement = achievementDao.getById(id) ?: return@withTransaction false
+        achievementDao.setArchived(id, archived = true, sortOrder = achievement.sortOrder)
+        true
+    }
+
+    /**
+     * Restores an archived achievement to the end of its tab (ACH-07). Archiving does not pause a
+     * streak — periods that passed while archived were missed like any others — so the streak is
+     * reconciled from the log in the same transaction, and the card comes back showing the truth.
+     */
+    suspend fun restore(id: Long): Boolean {
+        refreshForWrite()
+        return database.withTransaction<Boolean> {
+            val achievement = achievementDao.getById(id) ?: return@withTransaction false
+            val periodType = periodTypeOf(achievement) ?: return@withTransaction false
+            val nextPosition = (achievementDao.maxSortOrder(periodType.name) ?: -1) + 1
+            achievementDao.setArchived(id, archived = false, sortOrder = nextPosition)
+            reconcileStreaks.runFor(
+                id,
+                currentPeriodProvider.current(periodType).value,
+                force = true,
+                keyPeriodType = periodType,
+            )
+            true
+        }
+    }
+
+    /**
+     * Permanently deletes an *archived* achievement and its entire history (ACH-08). Refuses —
+     * returning false without touching anything — for an achievement that is not archived, so an
+     * active achievement can never be deleted in one step; the confirmation lives in the UI.
+     */
+    suspend fun deletePermanently(id: Long): Boolean = database.withTransaction<Boolean> {
+        val achievement = achievementDao.getById(id) ?: return@withTransaction false
+        if (!achievement.archived) return@withTransaction false
+        progressDao.deleteAllFor(id)
+        achievementDao.deleteIfArchived(id) == 1
+    }
+
+    /**
+     * Persists a tab's order (ACH-09): [orderedIds] become positions 0, 1, 2, … in one
+     * transaction, so a reorder is never left half-applied. Ids that are not active achievements
+     * of [periodType] are skipped rather than given a position in the wrong tab.
+     */
+    suspend fun reorder(periodType: PeriodType, orderedIds: List<Long>) {
+        database.withTransaction {
+            orderedIds.forEachIndexed { position, id ->
+                val achievement = achievementDao.getById(id) ?: return@forEachIndexed
+                if (achievement.archived || achievement.periodType != periodType.name) return@forEachIndexed
+                achievementDao.updateSortOrder(id, position)
+            }
+        }
+    }
+
+    /** Everything archived, for the Archived screen (ACH-06 – ACH-08). */
+    fun observeArchived(): Flow<List<ArchivedAchievement>> =
+        achievementDao.observeArchived().map { rows ->
+            rows.map { achievement ->
+                ArchivedAchievement(
                     id = achievement.id,
                     name = achievement.name,
                     icon = achievement.icon,
                     accent = swatchOf(achievement.accentSwatch),
-                    target = achievement.counterTarget,
-                    todayCount = progress?.count ?: 0,
-                    isDone = progress?.done ?: false,
-                    currentStreak = achievement.currentStreak,
+                    periodType = periodTypeOf(achievement) ?: PeriodType.DAILY,
                     bestStreak = achievement.bestStreak,
                 )
             }
         }
 
-    /** Creates a new daily achievement, zeroed streaks and no tiers configured. Returns its id. */
-    suspend fun create(name: String, icon: String?, accent: AccentSwatch, target: Int): Long {
-        val entity = AchievementEntity(
-            name = name,
-            periodType = PeriodType.DAILY.name,
-            icon = icon,
-            accentSwatch = accent.name,
-            counterTarget = target,
-            bronzeThreshold = null,
-            silverThreshold = null,
-            goldThreshold = null,
-            createdAtEpochDay = clock.epochDay(),
-            currentStreak = 0,
-            bestStreak = 0,
-            streakCachedForPeriodKey = null,
-        )
-        return achievementDao.insert(entity)
-    }
-
     /**
-     * Logs one tap of progress against **today only** — this method resolves today's key itself
-     * (see [resolveTodayKeyForWrite]) and never accepts a period key from its caller, which is
-     * what makes TRACK-05/TRACK-10 structural rather than a runtime check
-     * someone could forget (T-01-14). Row creation, the atomic counter update, and the
-     * read-back of the resulting count all happen inside
-     * [ProgressDao.incrementAndRead]'s single transaction (T-01-15), so [IncrementOutcome.newCount]
-     * always matches exactly what *this* call produced, even under concurrent taps.
+     * Logs one tap of progress against **the current period only** — this method resolves the
+     * achievement's current period key itself (see [refreshForWrite]) and never accepts a period
+     * key from its caller, which is what makes TRACK-05/TRACK-10 structural rather than a runtime
+     * check someone could forget (T-01-14). Row creation, the atomic counter update (including the
+     * `tierReached` snapshot), and the read-back of the resulting count all happen inside
+     * [ProgressDao.incrementAndRead]'s single transaction (T-01-15), so
+     * [IncrementOutcome.newCount] always matches exactly what *this* call produced, even under
+     * concurrent taps.
      *
-     * [IncrementOutcome.justCompleted] is derived from [IncrementOutcome.newCount] alone
+     * [IncrementOutcome.justCompleted], [IncrementOutcome.tierReached] and
+     * [IncrementOutcome.tierUpgraded] are all derived from [IncrementOutcome.newCount] alone
      * (`previousCount = newCount - 1`) rather than from a separate "before" read, so there is no
      * second read that could race a concurrent increment and report the wrong transition.
      *
-     * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) inside the same
-     * transaction as the counter write, so the streak the UI reads on the next `observeDaily`
-     * emission is already correct — the tap and the streak tick-up are the same interaction
-     * (TRACK-06) and, because they commit together, process death between them cannot leave
-     * `streakCachedForPeriodKey` stamped with a value the completion log no longer supports.
+     * The thresholds handed to the SQL come from [TierLadder.fromStoredColumns], not the raw
+     * columns, so a stored combination that is not a valid ladder snapshots no tier at all rather
+     * than a nonsensical one — and the done threshold is the ladder's, falling back to
+     * `counterTarget` only when there is no ladder.
      *
-     * What [IncrementOutcome.newStreak] guarantees, precisely: it is a value read after this
-     * call's own reconcile, inside this call's own transaction. It is *not* guaranteed to be
-     * unaffected by a concurrent tap on the same achievement — the second transaction's reconcile
-     * recomputes from the same log and both arrive at the same number, so the value is correct,
-     * but it is a post-commit read rather than a snapshot owned exclusively by this call.
+     * [reconcileStreaks] runs (forced — see [ReconcileStreaksUseCase]'s own doc) for the
+     * achievement's own period type inside the same transaction as the counter write, so the
+     * streak the UI reads on the next emission is already correct — the tap and the streak
+     * tick-up are the same interaction (TRACK-06) and commit together.
      *
      * Returns `null` — without touching any row — when [achievementId] no longer resolves to an
-     * achievement. A row that was deleted between the frame the card rendered on and the tap
-     * landing is an ordinary race on a live-Room-backed list, not a programming error, so it is
-     * reported as a value the caller can ignore rather than as a thrown exception that would take
-     * the process down from inside a `viewModelScope` coroutine.
+     * achievement (an ordinary race on a live-Room-backed list, not a programming error) or when
+     * its stored period type is unrecognized.
      */
     suspend fun increment(achievementId: Long): IncrementOutcome? {
-        // Resolved before the transaction opens: refresh() assigns a StateFlow that read flows are
+        // Resolved before the transaction opens: refresh() assigns StateFlows that read flows are
         // subscribed to, and firing that while holding a write transaction would have collectors
         // querying a database they cannot read from yet.
-        val todayKey = resolveTodayKeyForWrite()
+        refreshForWrite()
         return database.withTransaction<IncrementOutcome?> {
-            val target = achievementDao.getById(achievementId)?.counterTarget ?: return@withTransaction null
-            val newCount = progressDao.incrementAndRead(achievementId, todayKey.value, target, clock.epochDay())
-            val isDone = newCount >= target
+            val achievement = achievementDao.getById(achievementId) ?: return@withTransaction null
+            val periodType = periodTypeOf(achievement) ?: return@withTransaction null
+            val currentKey = currentPeriodProvider.current(periodType).value
+            val ladder = achievement.ladder()
+            val streakTarget = ladder?.streakThreshold ?: achievement.counterTarget
+            val completeTarget = ladder?.completeThreshold ?: achievement.counterTarget
+
+            val newCount = progressDao.incrementAndRead(
+                achievementId = achievementId,
+                periodKey = currentKey.value,
+                target = streakTarget,
+                bronze = ladder?.bronze,
+                silver = ladder?.silver,
+                gold = ladder?.gold,
+                epochDay = clock.epochDay(),
+            )
             val previousCount = newCount - 1
-            val justCompleted = isDone && previousCount < target
-            reconcileStreaks.runFor(achievementId, todayKey, force = true)
+            val isDone = newCount >= completeTarget
+            val justCompleted = isDone && previousCount < completeTarget
+            val streakSecured = newCount >= streakTarget && previousCount < streakTarget
+            val previousTier = ladder?.tierFor(previousCount)
+            val newTier = ladder?.tierFor(newCount)
+            val tierUpgraded = !justCompleted && newTier != null && newTier != previousTier
+
+            reconcileStreaks.runFor(achievementId, currentKey, force = true, keyPeriodType = periodType)
             val newStreak = achievementDao.getById(achievementId)?.currentStreak ?: 0
             IncrementOutcome(
                 newCount = newCount,
                 isDone = isDone,
                 justCompleted = justCompleted,
                 newStreak = newStreak,
-                undoToken = UndoToken(achievementId, todayKey, newCount),
+                undoToken = UndoToken(achievementId, currentKey, newCount),
+                tierReached = newTier,
+                tierUpgraded = tierUpgraded,
+                streakSecured = streakSecured,
             )
         }
     }
 
     /**
      * Reverses the specific increment identified by [token] via a compare-and-set at the
-     * database layer (see [ProgressDao.undoIfUnchanged]). Returns `false` — without touching any
-     * row — when [token]'s period key is not today's: a token that survived past midnight is
-     * refused rather than applied to a new day (T-01-16). This, combined with [increment] never
-     * naming any period other than today, is the whole mechanism behind D-28: a backward clock
-     * move cannot reopen a day that isn't the one the trusted clock currently reports as today.
+     * database layer (see [ProgressDao.undoIfUnchanged]), re-snapshotting `tierReached` for the
+     * lowered count in the same statement. Returns `false` — without touching any row — when
+     * [token]'s period key is not the achievement's *current* period key: a token that survived
+     * past midnight (or past the end of the week/month) is refused rather than applied to a new
+     * period (T-01-16). This, combined with [increment] never naming any period other than the
+     * current one, is the whole mechanism behind D-28.
      *
      * On a successful reversal, [reconcileStreaks] runs (forced, same as [increment]) inside the
-     * same transaction as the compare-and-set, so the counter and the cached streak can never be
-     * left disagreeing by a crash between the two.
+     * same transaction as the compare-and-set.
      */
     suspend fun undo(token: UndoToken): Boolean {
-        val todayKey = resolveTodayKeyForWrite()
-        if (token.periodKey != todayKey) return false
+        refreshForWrite()
         return database.withTransaction {
-            val target = achievementDao.getById(token.achievementId)?.counterTarget
-                ?: return@withTransaction false
+            val achievement = achievementDao.getById(token.achievementId) ?: return@withTransaction false
+            val periodType = periodTypeOf(achievement) ?: return@withTransaction false
+            val currentKey = currentPeriodProvider.current(periodType).value
+            if (token.periodKey != currentKey) return@withTransaction false
+
+            val ladder = achievement.ladder()
             val affected = progressDao.undoIfUnchanged(
                 achievementId = token.achievementId,
-                periodKey = todayKey.value,
+                periodKey = currentKey.value,
                 expectedCount = token.expectedCount,
-                target = target,
+                target = ladder?.streakThreshold ?: achievement.counterTarget,
+                bronze = ladder?.bronze,
+                silver = ladder?.silver,
+                gold = ladder?.gold,
                 epochDay = clock.epochDay(),
             )
             val succeeded = affected > 0
-            if (succeeded) reconcileStreaks.runFor(token.achievementId, todayKey, force = true)
+            if (succeeded) {
+                reconcileStreaks.runFor(token.achievementId, currentKey, force = true, keyPeriodType = periodType)
+            }
             succeeded
         }
     }
 
     /**
-     * Resolves "today" for a write by refreshing [CurrentPeriodProvider] and then reading it,
-     * rather than calling `periodEngine.current` independently.
+     * Refreshes [CurrentPeriodProvider] before a write, rather than resolving the clock
+     * independently. [refresh][CurrentPeriodProvider.refresh] recomputes every period's key from
+     * the live clock, so a write still lands on the current period *at the moment of the write* —
+     * TRACK-05/TRACK-10 and D-28 are unaffected.
      *
-     * [refresh][CurrentPeriodProvider.refresh] recomputes from the live clock, so this still
-     * resolves today's key *at the moment of the write* — TRACK-05/TRACK-10 and D-28 are
-     * unaffected, and an increment still cannot land anywhere but the current period.
+     * What it additionally buys is that the read side agrees. The read flows are joined against
+     * the provider's keys, which only move when something calls `refresh()` — a system date
+     * broadcast or a process resume. Between real midnight and that signal arriving, a write
+     * resolving the clock independently would key its progress row to the *new* period while the
+     * UI was still showing the *old* period's row: the tap would appear to do nothing, the undo
+     * token would name a row the user cannot see, and a celebration could fire on a card that
+     * visibly stayed incomplete. Refreshing first collapses that window.
      *
-     * What it additionally buys is that the read side agrees. [observeDaily]/[observeDetail] are
-     * joined against `currentPeriodProvider.currentDailyKey`, which only moves when something
-     * calls `refresh()` — a system date broadcast or a process resume. Between real midnight and
-     * that signal arriving, a write resolving the clock independently would key its progress row
-     * to the *new* day while the UI was still showing the *old* day's row: the tap would appear to
-     * do nothing, the undo token would name a row the user cannot see, and a completion
-     * celebration could fire on a card that visibly stayed incomplete. Refreshing first collapses
-     * that window — the read flows re-subscribe to the same key this write is about to use.
-     *
-     * `refresh()` is a [kotlinx.coroutines.flow.MutableStateFlow] assignment, which suppresses an
-     * assignment equal to the current value, so on an unchanged day this is free and produces no
-     * downstream re-emission.
+     * `refresh()` assigns [kotlinx.coroutines.flow.MutableStateFlow]s, which suppress an
+     * assignment equal to the current value, so on an unchanged day this is free.
      */
+    private fun refreshForWrite() {
+        currentPeriodProvider.refresh()
+    }
+
+    private fun AchievementEntity.ladder(): TierLadder? =
+        TierLadder.fromStoredColumns(bronzeThreshold, silverThreshold, goldThreshold)
+
+    /** What the card's ring fills toward: Gold for a laddered achievement, else the target. */
+    private fun AchievementEntity.displayTarget(): Int = ladder()?.completeThreshold ?: counterTarget
+
+    /**
+     * Whether the achievement is *done* for the period. With no ladder that is the row's
+     * snapshotted `done` column, exactly as in Phase 1. With a ladder `done` only means "counts
+     * toward the streak" (the lowest tier), so done is read from the snapshotted `tierReached`
+     * instead — Gold and nothing else. Both are snapshots written with the count, so a closed
+     * period's result stays immutable either way (TRACK-10).
+     */
+    private fun AchievementEntity.isDoneFor(progress: ProgressEntity?): Boolean =
+        if (ladder() != null) {
+            Tier.fromStored(progress?.tierReached) == Tier.GOLD
+        } else {
+            progress?.done ?: false
+        }
+
+    private fun AchievementEntity.toTracked(periodType: PeriodType, progress: ProgressEntity?) =
+        TrackedAchievement(
+            id = id,
+            name = name,
+            icon = icon,
+            accent = swatchOf(accentSwatch),
+            target = displayTarget(),
+            count = progress?.count ?: 0,
+            isDone = isDoneFor(progress),
+            currentStreak = currentStreak,
+            bestStreak = bestStreak,
+            periodType = periodType,
+            tiers = ladder(),
+            tierReached = Tier.fromStored(progress?.tierReached),
+        )
+
+    private fun AchievementEntity.toDetail(periodType: PeriodType, progress: ProgressEntity?) =
+        AchievementDetail(
+            id = id,
+            name = name,
+            icon = icon,
+            accent = swatchOf(accentSwatch),
+            target = displayTarget(),
+            periodCount = progress?.count ?: 0,
+            isDone = isDoneFor(progress),
+            currentStreak = currentStreak,
+            bestStreak = bestStreak,
+            periodType = periodType,
+            tiers = ladder(),
+            tierReached = Tier.fromStored(progress?.tierReached),
+        )
+
+    /**
+     * Tolerant parse of the stored `periodType` — a hand-edited or future value maps to null
+     * rather than throwing out of a read flow or a write.
+     */
+    private fun periodTypeOf(achievement: AchievementEntity): PeriodType? =
+        PeriodType.entries.firstOrNull { it.name == achievement.periodType }
+
     /**
      * Maps a stored swatch name to an [AccentSwatch], falling back to [AccentSwatch.INDIGO] — the
      * creation screen's own default — rather than throwing.
@@ -232,16 +467,10 @@ class AchievementRepository(
      * `AccentSwatch.valueOf` throws `IllegalArgumentException` for any string outside the enum,
      * and `accentSwatch` is a plain `TEXT` column with no `CHECK` constraint, so a hand-edited
      * row, a future migration, or a renamed/removed swatch can all produce one. Thrown from
-     * inside [observeDaily], that exception reaches `DailyViewModel.uiState`'s `.catch`, which
-     * *terminates* the upstream flow — leaving the Daily tab permanently stuck on
-     * "Restart the app to try again" for as long as the row exists, with restarting no help. A
-     * cosmetic column is not worth an unrecoverable screen; the wrong colour is.
+     * inside a read flow, that exception reaches the tab ViewModel's `.catch`, which *terminates*
+     * the upstream flow — leaving the tab permanently stuck on "Restart the app to try again".
+     * A cosmetic column is not worth an unrecoverable screen; the wrong colour is.
      */
     private fun swatchOf(name: String): AccentSwatch =
         AccentSwatch.entries.firstOrNull { it.name == name } ?: AccentSwatch.INDIGO
-
-    private fun resolveTodayKeyForWrite(): PeriodKey {
-        currentPeriodProvider.refresh()
-        return currentPeriodProvider.currentDailyKey.value
-    }
 }

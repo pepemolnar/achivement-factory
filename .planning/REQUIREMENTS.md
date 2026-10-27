@@ -12,8 +12,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ACH-01**: User can create an achievement with a name and a period of daily, weekly, or monthly
 - [x] **ACH-02**: User can assign an icon and an accent colour to an achievement
 - [ ] **ACH-03**: User can edit an achievement's name, icon, and colour at any time without affecting its streak
-- [ ] **ACH-04**: User can raise an achievement's done threshold or tier thresholds after creation and keep the existing streak
-- [ ] **ACH-05**: App prevents lowering a threshold or changing the period after creation, so a streak can never be made easier retroactively
+- [ ] **ACH-04**: User can raise an achievement's target (Gold, when medals are on) and freely add, change or remove Bronze/Silver below it after creation, keeping the existing streak *(revised 2026-10-26)*
+- [ ] **ACH-05**: App prevents lowering the target (Gold) or changing the period after creation; closed periods keep the result they were recorded with *(revised 2026-10-26: Bronze/Silver may be lowered)*
 - [ ] **ACH-06**: User can archive an achievement, removing it from its tab while preserving its history
 - [ ] **ACH-07**: User can restore an archived achievement back into its tab
 - [ ] **ACH-08**: User can permanently delete an archived achievement and its history, with a confirmation step
@@ -26,7 +26,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **TIER-03**: Tier names are fixed as Bronze, Silver, and Gold, and cannot be renamed
 - [ ] **TIER-04**: App accepts only tier ladders that fill downward from Gold — `{Gold}`, `{Silver, Gold}`, or `{Bronze, Silver, Gold}` — and rejects any set omitting Gold or skipping a level
 - [ ] **TIER-05**: App requires tier thresholds to strictly increase from Bronze through Gold
-- [ ] **TIER-06**: When tiers are configured, the lowest tier's threshold is the achievement's done threshold, and higher tiers are upgrades rather than gates
+- [ ] **TIER-06**: When tiers are configured, the achievement is done only when Gold is reached; reaching the lowest configured tier is enough to keep the streak, and each tier below Gold is a celebrated milestone *(revised 2026-10-26 by the owner after on-device use — originally "the lowest tier's threshold is the done threshold")*
 - [ ] **TIER-07**: User can see the tier reached in the current period on the achievement's card
 
 ### Tracking

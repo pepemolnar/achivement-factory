@@ -12,6 +12,13 @@ import kotlinx.coroutines.flow.Flow
  * one *specific* increment rather than blindly decrementing — if a different increment landed
  * in between, zero rows match and the call is a no-op. No read-modify-write helper is
  * introduced in this DAO, and none should be added.
+ *
+ * Both statements also snapshot `tierReached` from the *resulting* count in the same statement
+ * (TRACK-09), via a `CASE` over the three thresholds. Thresholds a caller does
+ * not have are passed as `NULL`, and `x >= NULL` is `NULL` (never true) in SQLite, so a missing
+ * tier simply never matches — an achievement with no ladder always records `tierReached = NULL`.
+ * Because the snapshot is written with the count and never re-derived on read, a closed period's
+ * recorded tier is as immutable as its `done` flag (TRACK-10).
  */
 @Dao
 interface ProgressDao {
@@ -21,6 +28,9 @@ interface ProgressDao {
 
     @Query("SELECT * FROM progress WHERE achievementId = :achievementId AND periodKey = :periodKey")
     suspend fun getFor(achievementId: Long, periodKey: String): ProgressEntity?
+
+    @Query("SELECT * FROM progress WHERE achievementId = :achievementId AND periodKey = :periodKey")
+    fun observeFor(achievementId: Long, periodKey: String): Flow<ProgressEntity?>
 
     @Query("SELECT * FROM progress WHERE achievementId = :id ORDER BY periodKey DESC")
     fun observeForAchievement(id: Long): Flow<List<ProgressEntity>>
@@ -41,10 +51,26 @@ interface ProgressDao {
     /** Single-statement atomic increment (PITFALLS 9) — never preceded by a Kotlin-side read. */
     @Query(
         """UPDATE progress
-           SET count = count + 1, done = ((count + 1) >= :target), updatedAtEpochDay = :epochDay
+           SET count = count + 1,
+               done = ((count + 1) >= :target),
+               tierReached = CASE
+                   WHEN (count + 1) >= :gold THEN 'GOLD'
+                   WHEN (count + 1) >= :silver THEN 'SILVER'
+                   WHEN (count + 1) >= :bronze THEN 'BRONZE'
+                   ELSE NULL
+               END,
+               updatedAtEpochDay = :epochDay
            WHERE achievementId = :achievementId AND periodKey = :periodKey"""
     )
-    suspend fun incrementAtomic(achievementId: Long, periodKey: String, target: Int, epochDay: Long): Int
+    suspend fun incrementAtomic(
+        achievementId: Long,
+        periodKey: String,
+        target: Int,
+        bronze: Int?,
+        silver: Int?,
+        gold: Int?,
+        epochDay: Long,
+    ): Int
 
     /**
      * Compare-and-set undo: only applies when [expectedCount] still matches the live row, and
@@ -53,7 +79,15 @@ interface ProgressDao {
      */
     @Query(
         """UPDATE progress
-           SET count = count - 1, done = ((count - 1) >= :target), updatedAtEpochDay = :epochDay
+           SET count = count - 1,
+               done = ((count - 1) >= :target),
+               tierReached = CASE
+                   WHEN (count - 1) >= :gold THEN 'GOLD'
+                   WHEN (count - 1) >= :silver THEN 'SILVER'
+                   WHEN (count - 1) >= :bronze THEN 'BRONZE'
+                   ELSE NULL
+               END,
+               updatedAtEpochDay = :epochDay
            WHERE achievementId = :achievementId AND periodKey = :periodKey
              AND count = :expectedCount AND count > 0"""
     )
@@ -62,11 +96,44 @@ interface ProgressDao {
         periodKey: String,
         expectedCount: Int,
         target: Int,
+        bronze: Int?,
+        silver: Int?,
+        gold: Int?,
         epochDay: Long,
     ): Int
 
     @Query("SELECT count FROM progress WHERE achievementId = :achievementId AND periodKey = :periodKey")
     suspend fun countFor(achievementId: Long, periodKey: String): Int?
+
+    /**
+     * Re-derives `done` and `tierReached` for one row from its *existing* count against new
+     * thresholds, in a single statement. Only ever called for the current, still-open period when
+     * an achievement's thresholds are raised (ACH-04) — a closed period's snapshot is never
+     * rewritten (TRACK-10). Never changes `count`.
+     */
+    @Query(
+        """UPDATE progress
+           SET done = (count >= :target),
+               tierReached = CASE
+                   WHEN count >= :gold THEN 'GOLD'
+                   WHEN count >= :silver THEN 'SILVER'
+                   WHEN count >= :bronze THEN 'BRONZE'
+                   ELSE NULL
+               END
+           WHERE achievementId = :achievementId AND periodKey = :periodKey"""
+    )
+    suspend fun resnapshot(
+        achievementId: Long,
+        periodKey: String,
+        target: Int,
+        bronze: Int?,
+        silver: Int?,
+        gold: Int?,
+    ): Int
+
+    /** Belt-and-braces companion to the `CASCADE` foreign key for a permanent delete (ACH-08). */
+    @Query("DELETE FROM progress WHERE achievementId = :achievementId")
+    suspend fun deleteAllFor(achievementId: Long): Int
 
     /**
      * Row creation, the atomic increment, and the read-back of the resulting count as one unit
@@ -75,9 +142,17 @@ interface ProgressDao {
      * write transactions and this whole method runs inside a single one.
      */
     @Transaction
-    suspend fun incrementAndRead(achievementId: Long, periodKey: String, target: Int, epochDay: Long): Int {
+    suspend fun incrementAndRead(
+        achievementId: Long,
+        periodKey: String,
+        target: Int,
+        bronze: Int?,
+        silver: Int?,
+        gold: Int?,
+        epochDay: Long,
+    ): Int {
         insertIfAbsent(achievementId, periodKey, epochDay)
-        incrementAtomic(achievementId, periodKey, target, epochDay)
+        incrementAtomic(achievementId, periodKey, target, bronze, silver, gold, epochDay)
         return countFor(achievementId, periodKey) ?: 0
     }
 }

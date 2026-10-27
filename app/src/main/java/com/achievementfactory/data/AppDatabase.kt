@@ -6,16 +6,19 @@ import com.achievementfactory.data.achievement.AchievementDao
 import com.achievementfactory.data.achievement.AchievementEntity
 import com.achievementfactory.data.progress.ProgressDao
 import com.achievementfactory.data.progress.ProgressEntity
+import com.achievementfactory.data.todo.TodoDao
+import com.achievementfactory.data.todo.TodoEntity
 
 /**
  * The single source of truth for the schema version, driving both the `@Database` annotation
  * below and `SchemaExportTest`'s check that a matching `app/schemas/` file exists — so the two
  * can never silently drift apart.
  */
-const val APP_DATABASE_VERSION = 1
+const val APP_DATABASE_VERSION = 2
 
 /**
- * Schema version 1. `exportSchema = true` plus the committed JSON under `app/schemas/` is what
+ * Schema version 2 — v1 plus `achievements.sortOrder` (ACH-09) and the `todos` table (Phase 4),
+ * reached through [MIGRATION_1_2]. `exportSchema = true` plus the committed JSON under `app/schemas/` is what
  * makes `MigrationTestHelper` possible for every future schema change (PITFALLS 7).
  *
  * The destructive-migration-fallback builder options must never appear in this builder chain
@@ -24,11 +27,12 @@ const val APP_DATABASE_VERSION = 1
  * `Migration(from, to)` plus a `MigrationTestHelper` test.
  */
 @Database(
-    entities = [AchievementEntity::class, ProgressEntity::class],
+    entities = [AchievementEntity::class, ProgressEntity::class, TodoEntity::class],
     version = APP_DATABASE_VERSION,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun achievementDao(): AchievementDao
     abstract fun progressDao(): ProgressDao
+    abstract fun todoDao(): TodoDao
 }

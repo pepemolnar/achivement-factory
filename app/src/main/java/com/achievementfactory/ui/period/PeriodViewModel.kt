@@ -1,4 +1,4 @@
-package com.achievementfactory.ui.daily
+package com.achievementfactory.ui.period
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -9,8 +9,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.achievementfactory.AchievementFactoryApp
 import com.achievementfactory.data.achievement.AchievementRepository
-import com.achievementfactory.domain.model.DailyAchievement
+import com.achievementfactory.data.todo.TodoRepository
 import com.achievementfactory.domain.model.UndoToken
+import com.achievementfactory.period.PeriodType
 import com.achievementfactory.ui.celebration.CelebrationEvent
 import com.achievementfactory.ui.theme.MotionSpecs
 import kotlinx.coroutines.Job
@@ -24,12 +25,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val LOAD_ERROR_MESSAGE = "Couldn't load your achievements. Restart the app to try again."
-private const val TAG = "DailyViewModel"
+private const val TAG = "PeriodViewModel"
 
 /**
  * Buffer depth for the two one-shot event streams below, paired with `replay = 0` and
@@ -37,7 +40,7 @@ private const val TAG = "DailyViewModel"
  *
  * This combination — not `Channel(Channel.BUFFERED)` — is what actually makes CELEB-04 ("a
  * celebration plays exactly once") true. A `Channel` retains up to 64 *undelivered* elements and
- * hands every one of them to the next collector; `DailyScreen` collects under
+ * hands every one of them to the next collector; `PeriodScreen` collects under
  * `repeatOnLifecycle(STARTED)`, so an event produced while the screen is stopped (the write lands
  * asynchronously in `viewModelScope`, which outlives an `Activity` recreation) was buffered and
  * then replayed after rotation — the celebration re-running on an already-completed card and the
@@ -52,11 +55,20 @@ private const val TAG = "DailyViewModel"
 private const val EVENT_BUFFER_CAPACITY = 8
 
 /**
- * The Daily tab's ViewModel — the shape every later screen-level ViewModel in this project
- * copies (ARCHITECTURE.md "Pattern 2"). Reactively derives [uiState] from
- * [AchievementRepository.observeDaily]; never polls, never exposes a manual refresh method.
+ * One period tab's ViewModel — the shape every screen-level ViewModel in this project copies
+ * (ARCHITECTURE.md "Pattern 2"). One instance exists per [periodType] (keyed in `AppNavHost`), so
+ * the Daily, Weekly and Monthly tabs each have their own held-back set and their own one-shot
+ * event streams, and an event produced on one tab can never play on another. Reactively derives
+ * [uiState] from [AchievementRepository.observePeriod]; never polls, never exposes a manual
+ * refresh method.
  */
-class DailyViewModel(private val repository: AchievementRepository) : ViewModel() {
+class PeriodViewModel(
+    private val repository: AchievementRepository,
+    val periodType: PeriodType = PeriodType.DAILY,
+    // Nullable so the many achievement-only tests can keep constructing this with one repository;
+    // the real app always passes it (see [factoryFor]).
+    private val todoRepository: TodoRepository? = null,
+) : ViewModel() {
 
     // The seam plan 01-04 built and this plan populates: an achievement whose id is in this set
     // stays in the `outstanding` group even though it is done, for exactly the duration of its
@@ -69,15 +81,18 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
     // UI callback, so a plain map needs no extra synchronization.
     private val heldBackReleaseTimers = mutableMapOf<Long, Job>()
 
-    val uiState: StateFlow<DailyUiState> = combine(
-        repository.observeDaily(),
+    val uiState: StateFlow<PeriodUiState> = combine(
+        repository.observePeriod(periodType),
         _heldBackIds,
-    ) { achievements, heldBackIds -> DailyUiState.Content.partition(achievements, heldBackIds) as DailyUiState }
-        .catch { emit(DailyUiState.Error(LOAD_ERROR_MESSAGE)) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyUiState.Loading)
+        todoRepository?.observeTodos(periodType) ?: flowOf(emptyList()),
+    ) { achievements, heldBackIds, todos ->
+        PeriodUiState.Content.partition(achievements, heldBackIds, todos) as PeriodUiState
+    }
+        .catch { emit(PeriodUiState.Error(LOAD_ERROR_MESSAGE)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PeriodUiState.Loading)
 
     // Undo is an event, not state (PITFALLS 8/Anti-Pattern 1). Never fold this token into
-    // DailyUiState. See EVENT_BUFFER_CAPACITY for why this is a zero-replay SharedFlow rather than
+    // PeriodUiState. See EVENT_BUFFER_CAPACITY for why this is a zero-replay SharedFlow rather than
     // a Channel.
     private val _undoRequests = MutableSharedFlow<UndoToken>(
         replay = 0,
@@ -87,13 +102,24 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
     val undoRequests: SharedFlow<UndoToken> = _undoRequests.asSharedFlow()
 
     // Same one-shot pattern as undoRequests (CELEB-04). Emitted only from the exact transition
-    // edge (IncrementOutcome.justCompleted), never derived from a state snapshot.
+    // edges (IncrementOutcome.justCompleted / .tierUpgraded), never derived from a state snapshot.
     private val _celebrations = MutableSharedFlow<CelebrationEvent>(
         replay = 0,
         extraBufferCapacity = EVENT_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val celebrations: SharedFlow<CelebrationEvent> = _celebrations.asSharedFlow()
+
+    // CELEB-03: the whole tab just got cleared. Same zero-replay construction as every other
+    // one-shot event here, and emitted only from the action that produced the transition — a
+    // completing tap or a todo tick — never derived from a state snapshot, so it plays exactly once
+    // and never on rotation, re-entering the tab, or restart.
+    private val _fullTabCelebrations = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = EVENT_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val fullTabCelebrations: SharedFlow<Unit> = _fullTabCelebrations.asSharedFlow()
 
     /**
      * Logs one tap of progress. Always +1, regardless of the achievement's target (D-02).
@@ -102,7 +128,7 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
      * *read* flow, so an exception thrown here — a `SQLiteException` from a full/corrupt/closed
      * database — would reach the default uncaught-exception handler and kill the process on the
      * app's primary interaction. A failed tap is dropped (and logged) instead; the next
-     * `observeDaily` emission still shows the true stored state, so the UI cannot end up
+     * `observePeriod` emission still shows the true stored state, so the UI cannot end up
      * disagreeing with the database. A `null` outcome means the row vanished between render and
      * tap, which is a normal race rather than a failure.
      */
@@ -115,13 +141,32 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
             // tryEmit, never emit: with DROP_OLDEST it always succeeds and never suspends, so a
             // tap can no longer wedge behind a full buffer waiting for a collector to appear.
             _undoRequests.tryEmit(outcome.undoToken)
+            val tierReached = outcome.tierReached
+            // The flame reacts only on the tap that actually moved the streak — for a ladder that is
+            // the lowest medal, not Gold — and "first flame" only ever on that tap.
+            val isFirstFlame = outcome.streakSecured && outcome.newStreak == 1
             if (outcome.justCompleted) {
+                emitIfTabCleared()
                 holdBack(id)
                 _celebrations.tryEmit(
                     CelebrationEvent.Completed(
                         achievementId = id,
                         newStreak = outcome.newStreak,
-                        isFirstFlame = outcome.newStreak == 1,
+                        isFirstFlame = isFirstFlame,
+                        tier = tierReached,
+                        ticksStreak = outcome.streakSecured,
+                    ),
+                )
+            } else if (outcome.tierUpgraded && tierReached != null) {
+                // No hold-back: a medal below Gold does not make the card done, so it is not
+                // moving into the Done section — there is no sink to delay.
+                _celebrations.tryEmit(
+                    CelebrationEvent.TierUpgraded(
+                        achievementId = id,
+                        tier = tierReached,
+                        ticksStreak = outcome.streakSecured,
+                        newStreak = outcome.newStreak,
+                        isFirstFlame = isFirstFlame,
                     ),
                 )
             }
@@ -136,6 +181,61 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
         viewModelScope.launch {
             runCatching { repository.undo(token) }
                 .onFailure { Log.w(TAG, "undo failed for achievement id=${token.achievementId}", it) }
+        }
+    }
+
+    /**
+     * Persists the order the user dragged the tab into (ACH-09). Fire-and-forget: the list is a
+     * live Room flow, so the stored order comes straight back on the next emission. Guarded like
+     * every other write here, because an exception escaping `viewModelScope.launch` kills the
+     * process.
+     */
+    /**
+     * Ticks or unticks a todo (TODO-03) — tapping again is the undo. No celebration event: a todo
+     * is a one-off with no streak to tick (the full-tab moment that counts todos is Phase 5).
+     */
+    fun onToggleTodo(id: Long, done: Boolean) {
+        val todos = todoRepository ?: return
+        viewModelScope.launch {
+            val changed = runCatching { todos.setDone(id, done) }
+                .onFailure { Log.w(TAG, "toggle failed for todo id=$id", it) }
+                .getOrDefault(false)
+            if (changed && done) emitIfTabCleared()
+        }
+    }
+
+    /**
+     * Emits the full-tab event if this period's tab is now completely clear: at least one item,
+     * every achievement done (Gold for a ladder) and every todo ticked. Called only right after a
+     * write that just completed something, so the check reads the committed state of the very
+     * write that may have cleared the tab. A failed read is treated as "not cleared" — a missed
+     * celebration is far better than a crash or a false one.
+     */
+    private suspend fun emitIfTabCleared() {
+        val cleared = runCatching {
+            val achievements = repository.observePeriod(periodType).first()
+            val todos = todoRepository?.observeTodos(periodType)?.first().orEmpty()
+            (achievements.isNotEmpty() || todos.isNotEmpty()) &&
+                achievements.all { it.isDone } &&
+                todos.all { it.done }
+        }.onFailure { Log.w(TAG, "full-tab check failed for $periodType", it) }
+            .getOrDefault(false)
+        if (cleared) _fullTabCelebrations.tryEmit(Unit)
+    }
+
+    /** Deletes a todo for good (TODO-06) — only ever called after the screen's confirmation. */
+    fun onDeleteTodo(id: Long) {
+        val todos = todoRepository ?: return
+        viewModelScope.launch {
+            runCatching { todos.delete(id) }
+                .onFailure { Log.w(TAG, "delete failed for todo id=$id", it) }
+        }
+    }
+
+    fun onReorder(orderedIds: List<Long>) {
+        viewModelScope.launch {
+            runCatching { repository.reorder(periodType, orderedIds) }
+                .onFailure { Log.w(TAG, "reorder failed for $periodType", it) }
         }
     }
 
@@ -177,11 +277,14 @@ class DailyViewModel(private val repository: AchievementRepository) : ViewModel(
     }
 
     companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
+        /** The factory for one tab. Pair it with a per-[periodType] `key` in `viewModel(...)`. */
+        fun factoryFor(periodType: PeriodType): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as AchievementFactoryApp
-                DailyViewModel(app.container.achievementRepository)
+                PeriodViewModel(app.container.achievementRepository, periodType, app.container.todoRepository)
             }
         }
+
+        val Factory: ViewModelProvider.Factory = factoryFor(PeriodType.DAILY)
     }
 }

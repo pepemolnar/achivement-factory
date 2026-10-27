@@ -9,8 +9,9 @@ import com.achievementfactory.ui.nav.AppNavHost
 import com.achievementfactory.ui.theme.AchievementFactoryTheme
 
 /**
- * The app's single Activity, hosting the single [AppNavHost]. The Daily tab (the only
- * destination in this plan) renders through [com.achievementfactory.ui.daily.DailyScreen].
+ * The app's single Activity, hosting the single [AppNavHost]. Its start destination is the
+ * three-tab container (Daily, Weekly, Monthly), each tab rendered through
+ * [com.achievementfactory.ui.period.PeriodScreen].
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

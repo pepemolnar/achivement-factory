@@ -11,7 +11,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import com.achievementfactory.domain.tier.Tier
 
 /**
  * Every duration, spring and stage-offset value the completion celebration sequence uses
@@ -48,6 +51,35 @@ object MotionSpecs {
     val cardSink: FiniteAnimationSpec<IntOffset> =
         spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
 
+    /** Neighbouring cards sliding out of the way while one is dragged in reorder mode (ACH-09). */
+    val reorderPlacement: FiniteAnimationSpec<IntOffset> =
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
+    // --- Full-tab celebration (CELEB-03) -------------------------------------------------------
+
+    /**
+     * Wait before the full-tab moment starts, so the last card's own celebration is seen first
+     * and the big one reads as its consequence. Collapses to 0 under reduced motion.
+     */
+    const val FULL_TAB_DELAY_MS = 350L
+
+    /** How long the full-tab overlay (confetti + banner) stays up before it clears itself. */
+    const val FULL_TAB_DURATION_MS = 2_600L
+
+    /** Under reduced motion: no confetti at all, just the banner, briefly (CELEB-06). */
+    const val FULL_TAB_REDUCED_DURATION_MS = 1_200L
+
+    /** How long the confetti emitters fire, and how many particles each throws in that time. */
+    const val FULL_TAB_EMIT_MS = 180L
+    const val FULL_TAB_PARTICLES_PER_BURST = 90
+
+    /** The banner's pop-in. Big and bouncy — this is the app's largest moment. */
+    val fullTabBanner: AnimationSpec<Float> =
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+
+    /** The banner fading back out at the end. */
+    val fullTabFade: AnimationSpec<Float> = tween(durationMillis = 400, easing = FastOutSlowInEasing)
+
     /** What every [Float]-valued spec above collapses to under reduced motion. */
     val reducedCollapse: AnimationSpec<Float> = tween(durationMillis = 90, easing = LinearEasing)
 
@@ -57,6 +89,64 @@ object MotionSpecs {
 
     const val CHECK_MORPH_DELAY_MS = 250L
     const val FLAME_DELAY_MS = 400L
+
+    // --- Tier scaling (CELEB-01, CELEB-02) ----------------------------------------------------
+    //
+    // A celebration's intensity is a pure function of the tier it celebrates, resolved here so
+    // that escalation is a matter of *spec*, never a new code path: `CompletionCelebration` runs
+    // the same sequence for every tier and only reads different numbers out of this table. Every
+    // spec below still goes through [resolve]/[resolveDelay], so each tier inherits reduced-motion
+    // handling for free (D-25). `null` means "no ladder" and plays exactly the Phase 1 treatment.
+
+    /** Peak of the checkmark's scale pulse (1.0 → peak → 1.0). The no-ladder value is Phase 1's. */
+    fun checkPulsePeak(tier: Tier?): Float = when (tier) {
+        null -> 1.15f
+        Tier.BRONZE -> 1.18f
+        Tier.SILVER -> 1.25f
+        Tier.GOLD -> 1.35f
+    }
+
+    /** How many particles the radial burst throws; 0 means no burst (the no-ladder default). */
+    fun burstParticleCount(tier: Tier?): Int = when (tier) {
+        null -> 0
+        Tier.BRONZE -> 6
+        Tier.SILVER -> 10
+        Tier.GOLD -> 16
+    }
+
+    /**
+     * How far, from the icon centre, the burst's particles travel. Kept inside the card's 72dp
+     * minimum height so even Gold reads as a burst rather than being clipped flat by the card.
+     */
+    fun burstRadius(tier: Tier?): Dp = when (tier) {
+        null -> 0.dp
+        Tier.BRONZE -> 26.dp
+        Tier.SILVER -> 32.dp
+        Tier.GOLD -> 38.dp
+    }
+
+    /** The burst's travel-and-fade, linear progress 0 → 1 (easing is applied when drawing). */
+    fun burst(tier: Tier?): AnimationSpec<Float> = when (tier) {
+        null, Tier.BRONZE -> tween(durationMillis = 450, easing = LinearEasing)
+        Tier.SILVER -> tween(durationMillis = 550, easing = LinearEasing)
+        Tier.GOLD -> tween(durationMillis = 700, easing = LinearEasing)
+    }
+
+    /** The tier badge's pop-in (0 → overshoot → 1). Gold is the bounciest. */
+    fun tierBadgePop(tier: Tier?): AnimationSpec<Float> = when (tier) {
+        Tier.GOLD -> spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessLow)
+        Tier.SILVER -> spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+        null, Tier.BRONZE -> spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+    }
+
+    /** How far the tier badge overshoots on its pop before settling back to 1.0. */
+    const val TIER_BADGE_POP_PEAK = 1.3f
+
+    /**
+     * Stage offset for a mid-period tier *upgrade* (CELEB-02): the card is already done, so there
+     * is no ring to close — the badge and burst start at once and the check pulses alongside.
+     */
+    const val TIER_UPGRADE_DELAY_MS = 0L
 
     /**
      * Hard ceiling on how long a just-completed achievement may be held out of the Done section
